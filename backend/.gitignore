@@ -1,0 +1,32 @@
+# Python Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments (always keep your env local)
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables and configuration secrets
+.env
+.env.dev
+.env.prod
+*.env
+
+# Firebase Service Account JSON keys (CRUCIAL for Python Admin SDK)
+*.json
+!requirements.txt  # Explicitly allow requirements.txt if it's in the same folder
+
+# IDEs and editors
+.vscode/
+.idea/
+
+# OS specific files
+.DS_Store
+# Firebase Service Account JSON keys (CRUCIAL for Python Admin SDK)
+*.json
+firebase-key.json        # Explicitly ignore your specific Firebase key
