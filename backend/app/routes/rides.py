@@ -1,7 +1,14 @@
 from fastapi import APIRouter
 from app.firebase import db
-import uuid
+from uuid import uuid4
 from datetime import datetime
+from firebase_admin import firestore
+from app.services.fare_engine import (
+    calculate_fare
+)
+from app.services.ola_maps import (
+    calculate_distance
+)
 
 router = APIRouter(prefix="/rides", tags=["Rides"])
 
@@ -9,25 +16,60 @@ router = APIRouter(prefix="/rides", tags=["Rides"])
 @router.post("/create")
 def create_ride(data: dict):
 
-    ride_id = str(uuid.uuid4())
+    ride_id = str(uuid4())
 
     ride_data = {
+
         "rideId": ride_id,
+
         "customerId": data["customerId"],
+
         "pickup": data["pickup"],
-        "drop": data["drop"],
-        "fare": data["fare"],
-        "status": "searching",
+
+        "destination": data["destination"],
+
+        "distanceKm": data["distanceKm"],
+
+        "estimatedFare": data["estimatedFare"],
+
         "driverId": None,
-        "createdAt": datetime.utcnow()
+
+        "status": "searching",
+
+        "createdAt":
+            firestore.SERVER_TIMESTAMP
     }
 
-    db.collection("rides").document(ride_id).set(ride_data)
+    db.collection("rides") \
+        .document(ride_id) \
+        .set(ride_data)
 
     return {
         "success": True,
         "rideId": ride_id
     }
+
+
+
+@router.get("/available-rides/{area}")
+def available_rides(area: str):
+
+    rides_ref = db.collection("rides") \
+        .where("status", "==", "searching") \
+        .stream()
+
+    rides = []
+
+    for ride in rides_ref:
+
+        ride_data = ride.to_dict()
+
+        rides.append({
+            "rideId": ride.id,
+            **ride_data
+        })
+
+    return rides
 
 @router.post("/manual-assign")
 def manual_assign(data: dict):
@@ -44,6 +86,41 @@ def manual_assign(data: dict):
         "success": True
     }
 
+@router.post("/estimate-fare")
+def estimate_fare(data: dict):
+
+    distance_km = data["distanceKm"]
+
+    fare = calculate_fare(
+        distance_km
+    )
+
+    return {
+        "distanceKm":
+            distance_km,
+
+        "estimatedFare":
+            fare
+    }
+
+@router.post("/calculate-distance")
+def calculate_distance_api(
+    data: dict
+):
+
+    distance_km = \
+        calculate_distance(
+            data["originLat"],
+            data["originLng"],
+            data["destLat"],
+            data["destLng"]
+        )
+
+    return {
+        "distanceKm":
+            distance_km
+    }
+    
 @router.post("/accept")
 def accept_ride(data: dict):
 
