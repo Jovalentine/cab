@@ -128,23 +128,29 @@ export default function DriverDashboard() {
 
           });
 
-          // VEHICLE TYPE FILTER
           const availableRides =
-            rides.filter((ride) =>
+            rides.filter((ride) => {
 
-              ride.status ===
-                "searching" &&
+              // RIDE MUST BE SEARCHING
+              if (
+                ride.status !== "searching"
+              ) {
+                return false;
+              }
 
-              (
+              // ANY VEHICLE
+              if (
+                ride.vehicleType === "any"
+              ) {
+                return true;
+              }
 
+              // MATCH VEHICLE TYPE
+              return (
                 ride.vehicleType ===
-                  "any" ||
-
-                ride.vehicleType ===
-                  userData?.vehicleType
-
-              )
-            );
+                userData?.vehicleType
+              );
+            });
 
           setAvailableRides(availableRides);
 
@@ -205,12 +211,85 @@ export default function DriverDashboard() {
       }
     };
 
+  // LIVE DRIVER LOCATION
+  useEffect(() => {
+
+    // ONLY WHEN ONLINE
+    if (!online) return;
+
+    const watchId =
+      navigator.geolocation.watchPosition(
+
+        async (position) => {
+
+          try {
+
+            const lat =
+              position.coords.latitude;
+
+            const lng =
+              position.coords.longitude;
+
+            console.log(
+              "DRIVER LOCATION:",
+              lat,
+              lng
+            );
+
+            // UPDATE FIRESTORE
+            const driverRef =
+              doc(
+                db,
+                "users",
+                userData.uid
+              );
+
+            await updateDoc(
+              driverRef,
+              {
+                currentLocation: {
+                  lat,
+                  lng
+                }
+              }
+            );
+
+          } catch (error) {
+
+            console.log(error);
+          }
+
+        },
+
+        (error) => {
+
+          console.log(error);
+        },
+
+        {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 5000
+        }
+
+      );
+
+    return () => {
+
+      navigator.geolocation.clearWatch(
+        watchId
+      );
+    };
+
+  }, [online]);
+
   // Accept Ride
   const acceptRide =
     async (rideId: string) => {
 
       try {
 
+        // UPDATE RIDE
         await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/rides/accept`,
           {
@@ -220,6 +299,24 @@ export default function DriverDashboard() {
               userData.uid
           }
         );
+
+        // DRIVER BUSY
+        const driverRef =
+          doc(
+            db,
+            "users",
+            userData.uid
+          );
+
+        await updateDoc(
+          driverRef,
+          {
+            available: false
+          }
+        );
+
+        // CLEAR AVAILABLE RIDES
+        setAvailableRides([]);
 
       } catch (error) {
 
@@ -246,6 +343,27 @@ export default function DriverDashboard() {
             status
           }
         );
+
+        // DRIVER AVAILABLE AGAIN
+        if (
+          status === "completed" ||
+          status === "cancelled"
+        ) {
+
+          const driverRef =
+            doc(
+              db,
+              "users",
+              userData.uid
+            );
+
+          await updateDoc(
+            driverRef,
+            {
+              available: true
+            }
+          );
+        }
 
       } catch (error) {
 

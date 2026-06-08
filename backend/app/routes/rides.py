@@ -32,6 +32,12 @@ def create_ride(data: dict):
 
         "estimatedFare": data["estimatedFare"],
 
+        "vehicleType":
+            data.get(
+                "vehicleType",
+                "any"
+            ),
+
         "driverId": None,
 
         "status": "searching",

@@ -527,6 +527,30 @@ const estimatedFare =
               }
             </p>
 
+            {driverData?.currentLocation && (
+
+              <p>
+                Driver Live Location
+                <br />
+                Latitude:
+                {" "}
+                {
+                  driverData
+                  .currentLocation
+                  .lat
+                }
+                <br />
+                Longitude:
+                {" "}
+                {
+                  driverData
+                  .currentLocation
+                  .lng
+                }
+              </p>
+
+            )}
+
             <p>
               Vehicle:
               {" "}
