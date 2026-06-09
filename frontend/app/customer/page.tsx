@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 
 import axios from "axios";
 
+
+import L from "leaflet";
+
 import {
   collection,
   onSnapshot,
@@ -13,7 +16,26 @@ import {
 
 import { db } from "@/lib/firebase";
 
+import {
+  MapContainer,
+  Marker,
+  Popup,
+  TileLayer
+} from "react-leaflet";
+
 import useAuth from "@/hooks/useAuth";
+
+delete (L.Icon.Default.prototype as any)
+  ._getIconUrl;
+
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png"
+});
 
 export default function CustomerDashboard() {
 
@@ -528,27 +550,32 @@ const estimatedFare =
             </p>
 
             {driverData?.currentLocation && (
-
-              <p>
-                Driver Live Location
-                <br />
-                Latitude:
-                {" "}
-                {
-                  driverData
-                  .currentLocation
-                  .lat
-                }
-                <br />
-                Longitude:
-                {" "}
-                {
-                  driverData
-                  .currentLocation
-                  .lng
-                }
-              </p>
-
+              <div className="mt-4 h-80 rounded-lg overflow-hidden shadow">
+                <MapContainer
+                  center={[
+                    driverData.currentLocation.lat,
+                    driverData.currentLocation.lng
+                  ]}
+                  zoom={15}
+                  style={{ height: "100%", width: "100%" }}
+                >
+                  <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  />
+                  {/* DRIVER */}
+                  <Marker
+                    position={[
+                      driverData.currentLocation.lat,
+                      driverData.currentLocation.lng
+                    ]}
+                  >
+                    <Popup>
+                      Driver Location
+                    </Popup>
+                  </Marker>
+                </MapContainer>
+              </div>
             )}
 
             <p>
