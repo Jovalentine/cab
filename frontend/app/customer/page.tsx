@@ -1,11 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
 import axios from "axios";
-
-
-import L from "leaflet";
+import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 
 import {
   collection,
@@ -16,26 +13,77 @@ import {
 
 import { db } from "@/lib/firebase";
 
-import {
-  MapContainer,
-  Marker,
-  Popup,
-  TileLayer
-} from "react-leaflet";
-
 import useAuth from "@/hooks/useAuth";
 
-delete (L.Icon.Default.prototype as any)
-  ._getIconUrl;
+const MapContainer = dynamic(
+  () =>
+    import("react-leaflet").then(
+      (mod) => mod.MapContainer
+    ),
+  {
+    ssr: false
+  }
+);
 
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png"
-});
+const TileLayer = dynamic(
+  () =>
+    import("react-leaflet").then(
+      (mod) => mod.TileLayer
+    ),
+  {
+    ssr: false
+  }
+);
+
+const Marker = dynamic(
+  () =>
+    import("react-leaflet").then(
+      (mod) => mod.Marker
+    ),
+  {
+    ssr: false
+  }
+);
+
+const Popup = dynamic(
+  () =>
+    import("react-leaflet").then(
+      (mod) => mod.Popup
+    ),
+  {
+    ssr: false
+  }
+);
+
+const Polyline = dynamic(
+  () =>
+    import("react-leaflet").then(
+      (mod) => mod.Polyline
+    ),
+  { ssr: false }
+);
+
+const createIcons = async () => {
+  const L = await import("leaflet");
+
+  return {
+    carIcon: new L.Icon({
+      iconUrl: "/car.svg",
+      iconSize: [45, 45],
+      iconAnchor: [22, 22],
+    }),
+    pickupIcon: new L.Icon({
+      iconUrl: "/pickup.svg",
+      iconSize: [40, 40],
+      iconAnchor: [20, 40],
+    }),
+    destinationIcon: new L.Icon({
+      iconUrl: "/destination.svg",
+      iconSize: [40, 40],
+      iconAnchor: [20, 40],
+    }),
+  };
+};
 
 export default function CustomerDashboard() {
 
@@ -67,6 +115,23 @@ export default function CustomerDashboard() {
   const [driverData,
     setDriverData] =
     useState(null);
+
+  const [icons, setIcons] =
+    useState(null);
+
+  const [
+    animatedDriverPosition,
+    setAnimatedDriverPosition
+  ] = useState(null);
+
+  const [
+    routeCoordinates,
+    setRouteCoordinates
+  ] = useState<any[]>([]);
+
+  useEffect(() => {
+    createIcons().then(setIcons);
+  }, []);
 
   // GET USER LOCATION
   useEffect(() => {
@@ -192,6 +257,96 @@ export default function CustomerDashboard() {
 
   }, [activeRide]);
 
+  // SMOOTH DRIVER MOVEMENT
+  useEffect(() => {
+    if (
+      !driverData?.currentLocation
+    ) return;
+
+    const targetLat =
+      driverData.currentLocation.lat;
+
+    const targetLng =
+      driverData.currentLocation.lng;
+
+    // FIRST LOAD
+    if (!animatedDriverPosition) {
+      setAnimatedDriverPosition({
+        lat: targetLat,
+        lng: targetLng
+      });
+
+      return;
+    }
+
+    const startLat =
+      animatedDriverPosition.lat;
+
+    const startLng =
+      animatedDriverPosition.lng;
+
+    const duration = 800;
+
+    const frames = 30;
+
+    let frame = 0;
+
+    const interval =
+      setInterval(() => {
+        frame++;
+
+        const progress =
+          frame / frames;
+
+        const lat =
+          startLat +
+          (
+            targetLat -
+            startLat
+          ) * progress;
+
+        const lng =
+          startLng +
+          (
+            targetLng -
+            startLng
+          ) * progress;
+
+        setAnimatedDriverPosition({
+          lat,
+          lng
+        });
+
+        if (frame >= frames) {
+          clearInterval(interval);
+        }
+      }, duration / frames);
+
+    return () =>
+      clearInterval(interval);
+  }, [driverData?.currentLocation]);
+
+  // FIX 1: Recalculate route ONLY on real GPS or destination updates (Not animation frames)
+  useEffect(() => {
+
+    if (
+      !driverData?.currentLocation ||
+      !activeRide?.destination
+    ) return;
+
+    getRoutePolyline(
+      driverData.currentLocation.lat,
+      driverData.currentLocation.lng,
+
+      activeRide.destination.lat,
+      activeRide.destination.lng
+    );
+
+  }, [
+    driverData?.currentLocation,
+    activeRide?.destination
+  ]);
+
   // SEARCH DESTINATIONS
   const searchPlaces =
     async (value: string) => {
@@ -209,9 +364,7 @@ export default function CustomerDashboard() {
 
         const response =
           await fetch(
-
-`https://api.olamaps.io/places/v1/autocomplete?input=${value}&api_key=${process.env.NEXT_PUBLIC_OLA_MAPS_API_KEY}`
-
+            `https://api.olamaps.io/places/v1/autocomplete?input=${value}&api_key=${process.env.NEXT_PUBLIC_OLA_MAPS_API_KEY}`
           );
 
         const data =
@@ -240,9 +393,7 @@ export default function CustomerDashboard() {
 
         const response =
           await fetch(
-
-`https://api.olamaps.io/places/v1/geocode?address=${encodeURIComponent(destination)}&api_key=${process.env.NEXT_PUBLIC_OLA_MAPS_API_KEY}`
-
+            `https://api.olamaps.io/places/v1/geocode?address=${encodeURIComponent(destination)}&api_key=${process.env.NEXT_PUBLIC_OLA_MAPS_API_KEY}`
           );
 
         const data =
@@ -283,75 +434,129 @@ export default function CustomerDashboard() {
     };
 
   // CALCULATE REAL DISTANCE
-const calculateDistance =
-  async () => {
+  const calculateDistance =
+    async () => {
 
-    // SAFETY CHECK
-    if (!currentLocation) {
+      // SAFETY CHECK
+      if (!currentLocation) {
 
-      alert(
-        "Location not available"
-      );
-
-      return 0;
-    }
-
-    try {
-
-      // GET DESTINATION COORDS
-      const destinationCoords =
-        await getDestinationCoordinates();
-
-      if (!destinationCoords) {
-
-        console.log(
-          "Destination coordinates not found"
+        alert(
+          "Location not available"
         );
 
         return 0;
       }
 
-      // DIRECTIONS API
-      const response =
-        await axios.post(
+      try {
 
-`${process.env.NEXT_PUBLIC_API_URL}/rides/calculate-distance`,
+        // GET DESTINATION COORDS
+        const destinationCoords =
+          await getDestinationCoordinates();
 
-{
-  originLat:
-    currentLocation.lat,
+        if (!destinationCoords) {
 
-  originLng:
-    currentLocation.lng,
+          console.log(
+            "Destination coordinates not found"
+          );
 
-  destLat:
-    destinationCoords.lat,
+          return 0;
+        }
 
-  destLng:
-    destinationCoords.lng
-}
-);
+        // DIRECTIONS API
+        const response =
+          await axios.post(
+            `${process.env.NEXT_PUBLIC_API_URL}/rides/calculate-distance`,
+            {
+              originLat:
+                currentLocation.lat,
 
-      const distanceKm =
-        response.data.distanceKm;
+              originLng:
+                currentLocation.lng,
 
-      console.log(
-        "DISTANCE RESPONSE:",
-        distanceKm
-      );
+              destLat:
+                destinationCoords.lat,
 
-      return distanceKm;
+              destLng:
+                destinationCoords.lng
+            }
+          );
 
-    } catch (error) {
+        const distanceKm =
+          response.data.distanceKm;
 
-      console.log(
-        "DISTANCE ERROR:",
-        error
-      );
+        console.log(
+          "DISTANCE RESPONSE:",
+          distanceKm
+        );
 
-      return 0;
-    }
-  };
+        return distanceKm;
+
+      } catch (error) {
+
+        console.log(
+          "DISTANCE ERROR:",
+          error
+        );
+
+        return 0;
+      }
+    };
+
+  // Route Polyline Fetch Logic
+  const getRoutePolyline =
+    async (
+      originLat: any,
+      originLng: any,
+      destLat: any,
+      destLng: any
+    ) => {
+
+      try {
+
+        const response =
+          await fetch(
+            `https://api.olamaps.io/routing/v1/directions?origin=${originLat},${originLng}&destination=${destLat},${destLng}&api_key=${process.env.NEXT_PUBLIC_OLA_MAPS_API_KEY}`
+          );
+
+        const data =
+          await response.json();
+
+        console.log(
+          "ROUTE RESPONSE:",
+          data
+        );
+
+        // FIX 2: Production-grade null safety check
+        if (
+          !data.routes ||
+          data.routes.length === 0 ||
+          !data.routes[0]?.legs?.[0]?.steps
+        ) {
+          return;
+        }
+
+        const steps =
+          data.routes[0]
+          .legs[0]
+          .steps;
+
+        // FIX 3: Simplified configuration preventing point duplication
+        const coords = steps.map((step: any) => [
+          step.end_location.lat,
+          step.end_location.lng
+        ]);
+
+        setRouteCoordinates(coords);
+
+      } catch (error) {
+
+        console.log(
+          "ROUTE ERROR:",
+          error
+        );
+      }
+    };
+
   // Create Ride
   const createRide =
     async () => {
@@ -363,16 +568,26 @@ const calculateDistance =
 
       try {
 
-        // TEMP STATIC DATA
-        // Later from Ola Maps API
+        // GET DESTINATION COORDINATES
+        const destinationCoords =
+          await getDestinationCoordinates();
+
+        if (!destinationCoords) {
+          alert("Invalid destination");
+          return;
+        }
 
         const pickup = {
           address:
-            "Current Location"
+            "Current Location",
+          lat: currentLocation.lat,
+          lng: currentLocation.lng
         };
 
         const destinationData = {
-          address: destination
+          address: destination,
+          lat: destinationCoords.lat,
+          lng: destinationCoords.lng
         };
 
         // CALCULATE REAL DISTANCE
@@ -382,15 +597,15 @@ const calculateDistance =
         // FARE CALCULATION
         const fareRes =
         await axios.post(
-         `${process.env.NEXT_PUBLIC_API_URL}/rides/estimate-fare`,
-         {
-            distanceKm
-          }
+           `${process.env.NEXT_PUBLIC_API_URL}/rides/estimate-fare`,
+           {
+             distanceKm
+            }
           );
 
-const estimatedFare =
-  fareRes.data
-    .estimatedFare;
+        const estimatedFare =
+          fareRes.data
+            .estimatedFare;
 
         await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/rides/create`,
@@ -549,34 +764,83 @@ const estimatedFare =
               }
             </p>
 
-            {driverData?.currentLocation && (
-              <div className="mt-4 h-80 rounded-lg overflow-hidden shadow">
-                <MapContainer
-                  center={[
-                    driverData.currentLocation.lat,
-                    driverData.currentLocation.lng
-                  ]}
-                  zoom={15}
-                  style={{ height: "100%", width: "100%" }}
-                >
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  />
-                  {/* DRIVER */}
-                  <Marker
-                    position={[
-                      driverData.currentLocation.lat,
-                      driverData.currentLocation.lng
+            {
+              activeRide?.pickup?.lat &&
+              activeRide?.destination?.lat &&
+              icons && (
+                <div className="mt-4 h-80 rounded-lg overflow-hidden shadow">
+                  <MapContainer
+                    center={[
+                      animatedDriverPosition?.lat ||
+                      activeRide.pickup.lat,
+                      animatedDriverPosition?.lng ||
+                      activeRide.pickup.lng
                     ]}
+                    zoom={15}
+                    style={{ height: "100%", width: "100%" }}
                   >
-                    <Popup>
-                      Driver Location
-                    </Popup>
-                  </Marker>
-                </MapContainer>
-              </div>
-            )}
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    />
+
+                    {/* DRIVER */}
+                    {
+                      animatedDriverPosition && (
+                        <Marker
+                          position={[
+                            animatedDriverPosition.lat,
+                            animatedDriverPosition.lng
+                          ]}
+                          icon={icons.carIcon}
+                        >
+                          <Popup>
+                            🚗 Driver Live Location
+                          </Popup>
+                        </Marker>
+                      )
+                    }
+
+                    {/* PICKUP */}
+                    <Marker
+                      position={[
+                        activeRide.pickup.lat,
+                        activeRide.pickup.lng
+                      ]}
+                      icon={icons.pickupIcon}
+                    >
+                      <Popup>
+                        📍 Pickup
+                      </Popup>
+                    </Marker>
+
+                    {/* DESTINATION */}
+                    <Marker
+                      position={[
+                        activeRide.destination.lat,
+                        activeRide.destination.lng
+                      ]}
+                      icon={icons.destinationIcon}
+                    >
+                      <Popup>
+                        🏁 Destination
+                      </Popup>
+                    </Marker>
+
+                    {/* Rendered Polyline using streamlined structure */}
+                    {
+                      routeCoordinates.length > 0 && (
+                        <Polyline
+                          positions={routeCoordinates}
+                          color="blue"
+                          weight={6}
+                        />
+                      )
+                    }
+                  </MapContainer>
+                </div>
+              )
+            }
 
             <p>
               Vehicle:
