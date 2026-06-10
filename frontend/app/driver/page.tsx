@@ -36,6 +36,12 @@ export default function DriverDashboard() {
     setRideHistory] =
       useState<any[]>([]);
 
+  // STEP 5: Added enteredOtp state
+  const [
+    enteredOtp,
+    setEnteredOtp
+  ] = useState("");
+
   // Driver Ride Listener
   useEffect(() => {
 
@@ -324,6 +330,69 @@ export default function DriverDashboard() {
       }
     };
 
+  // STEP 3: Added arrivedRide function
+  const arrivedRide =
+    async () => {
+
+      if (!activeRide) return;
+
+      try {
+
+        await updateDoc(
+          doc(
+            db,
+            "rides",
+            activeRide.id
+          ),
+          {
+            status: "arrived"
+          }
+        );
+
+      } catch (error) {
+
+        console.log(error);
+      }
+    };
+
+  // STEP 6: Added verifyOtp function
+  const verifyOtp =
+    async () => {
+
+      if (!activeRide) return;
+
+      if (
+        enteredOtp !==
+        activeRide.otp
+      ) {
+
+        alert(
+          "Invalid OTP"
+        );
+
+        return;
+      }
+
+      try {
+
+        await updateDoc(
+          doc(
+            db,
+            "rides",
+            activeRide.id
+          ),
+          {
+            status:
+              "in_progress"
+          }
+        );
+
+      } catch (error) {
+
+        console.log(error);
+      }
+    };
+
   // Update Ride Status
   const updateRideStatus =
     async (
@@ -503,39 +572,12 @@ export default function DriverDashboard() {
             flex-wrap
           ">
 
+            {/* STEP 7: Replaced active status action handlers */}
             {activeRide.status ===
               "accepted" && (
 
               <button
-                onClick={() =>
-                  updateRideStatus(
-                    "arriving"
-                  )
-                }
-                className="
-                  bg-blue-500
-                  text-white
-                  px-5
-                  py-3
-                  rounded-xl
-                "
-              >
-
-                Arriving
-
-              </button>
-
-            )}
-
-            {activeRide.status ===
-              "arriving" && (
-
-              <button
-                onClick={() =>
-                  updateRideStatus(
-                    "ongoing"
-                  )
-                }
+                onClick={arrivedRide}
                 className="
                   bg-yellow-500
                   text-white
@@ -545,14 +587,59 @@ export default function DriverDashboard() {
                 "
               >
 
-                Start Ride
+                Arrived
 
               </button>
 
             )}
 
             {activeRide.status ===
-              "ongoing" && (
+              "arrived" && (
+
+              <div className="
+                flex
+                flex-col
+                gap-4
+                w-full
+              ">
+
+                <input
+                  type="text"
+                  placeholder="Enter OTP"
+                  value={enteredOtp}
+                  onChange={(e) =>
+                    setEnteredOtp(
+                      e.target.value
+                    )
+                  }
+                  className="
+                    border
+                    p-4
+                    rounded-xl
+                  "
+                />
+
+                <button
+                  onClick={verifyOtp}
+                  className="
+                    bg-green-600
+                    text-white
+                    px-5
+                    py-3
+                    rounded-xl
+                  "
+                >
+
+                  Start Ride
+
+                </button>
+
+              </div>
+
+            )}
+
+            {activeRide.status ===
+              "in_progress" && (
 
               <button
                 onClick={() =>
@@ -561,7 +648,7 @@ export default function DriverDashboard() {
                   )
                 }
                 className="
-                  bg-green-600
+                  bg-black
                   text-white
                   px-5
                   py-3

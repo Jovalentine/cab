@@ -39,6 +39,9 @@ def create_ride(data: dict):
             ),
 
         "driverId": None,
+        
+        "otp":
+            data["otp"],
 
         "status": "searching",
 

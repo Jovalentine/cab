@@ -129,6 +129,11 @@ export default function CustomerDashboard() {
     setRouteCoordinates
   ] = useState<any[]>([]);
 
+  const [
+    eta,
+    setEta
+  ] = useState("");
+
   useEffect(() => {
     createIcons().then(setIcons);
   }, []);
@@ -326,13 +331,34 @@ export default function CustomerDashboard() {
       clearInterval(interval);
   }, [driverData?.currentLocation]);
 
-  // FIX 1: Recalculate route ONLY on real GPS or destination updates (Not animation frames)
   useEffect(() => {
 
     if (
       !driverData?.currentLocation ||
       !activeRide?.destination
     ) return;
+
+    if (
+  activeRide.status ===
+  "accepted" ||
+  activeRide.status ===
+  "arrived"
+) {
+
+  // DRIVER GOING TO CUSTOMER
+
+  getRoutePolyline(
+    driverData.currentLocation.lat,
+    driverData.currentLocation.lng,
+
+    activeRide.pickup.lat,
+    activeRide.pickup.lng
+  );
+
+} else {
+
+  
+    // RIDE STARTED
 
     getRoutePolyline(
       driverData.currentLocation.lat,
@@ -341,11 +367,12 @@ export default function CustomerDashboard() {
       activeRide.destination.lat,
       activeRide.destination.lng
     );
+  }
 
-  }, [
-    driverData?.currentLocation,
-    activeRide?.destination
-  ]);
+    }, [
+      driverData?.currentLocation,
+      activeRide?.destination
+    ]);
 
   // SEARCH DESTINATIONS
   const searchPlaces =
@@ -526,7 +553,24 @@ export default function CustomerDashboard() {
           data
         );
 
-        // FIX 2: Production-grade null safety check
+        // IMPROVEMENT 1: Formatted ETA configuration calculations
+        if (
+          data.routes?.[0]?.legs?.[0]
+        ) {
+
+          const durationSeconds =
+            data.routes[0]
+            .legs[0]
+            .duration;
+
+          const mins =
+            Math.ceil(
+              durationSeconds / 60
+            );
+
+          setEta(`${mins} mins`);
+        }
+
         if (
           !data.routes ||
           data.routes.length === 0 ||
@@ -540,11 +584,16 @@ export default function CustomerDashboard() {
           .legs[0]
           .steps;
 
-        // FIX 3: Simplified configuration preventing point duplication
-        const coords = steps.map((step: any) => [
-          step.end_location.lat,
-          step.end_location.lng
-        ]);
+        const coords = [[
+          originLat,
+          originLng
+        ],
+        ...steps.map(
+          (step: any) => [
+            step.end_location.lat,
+            step.end_location.lng
+          ]
+        )];
 
         setRouteCoordinates(coords);
 
@@ -622,7 +671,11 @@ export default function CustomerDashboard() {
             estimatedFare,
 
             vehicleType:
-              vehicleType
+              vehicleType,
+              otp:
+                Math.floor(
+                   1000 + Math.random() * 9000
+                   ).toString(),
           }
         );
 
@@ -650,12 +703,20 @@ export default function CustomerDashboard() {
             rideId: activeRide.id
           }
         );
+         // RESET MAP STATES
+      setRouteCoordinates([]);
 
-      } catch (error) {
+      setEta("");
 
-        console.log(error);
-      }
-    };
+      setAnimatedDriverPosition(
+        null
+      );
+
+    } catch (error) {
+
+      console.log(error);
+    }
+  };
 
   if (loading) {
     return <div>Loading...</div>;
@@ -743,16 +804,40 @@ export default function CustomerDashboard() {
                     ? "text-yellow-600"
                     : activeRide.status === "accepted"
                     ? "text-blue-600"
-                    : activeRide.status === "arriving"
-                    ? "text-purple-600"
-                    : activeRide.status === "ongoing"
-                    ? "text-green-600"
-                    : ""
+                    : "text-purple-600"
                 }
               `}>
                 {activeRide.status}
               </span>
             </p>
+            {activeRide.status ===
+                "arrived" && (
+
+                <div className="
+                 mt-6
+                 bg-black
+                  text-white
+                   p-6
+                   rounded-2xl
+                 ">
+
+              <p className="
+                 text-lg
+                mb-2
+                 ">
+                      Share OTP with Driver
+                </p>
+
+                  <h1 className="
+                    text-5xl
+                    font-bold
+                    tracking-widest
+                  ">
+                    {activeRide.otp}
+                  </h1>
+
+                </div>
+                )}
 
             <p>
               Driver:
@@ -763,6 +848,26 @@ export default function CustomerDashboard() {
                   : "Searching..."
               }
             </p>
+
+            {
+              eta && (
+
+                <div className="
+                  mt-3
+                  bg-green-100
+                  text-green-700
+                  px-4
+                  py-3
+                  rounded-xl
+                  inline-block
+                  font-semibold
+                ">
+
+                  🚗 Driver arriving in {eta}
+
+                </div>
+              )
+            }
 
             {
               activeRide?.pickup?.lat &&
@@ -827,7 +932,6 @@ export default function CustomerDashboard() {
                       </Popup>
                     </Marker>
 
-                    {/* Rendered Polyline using streamlined structure */}
                     {
                       routeCoordinates.length > 0 && (
                         <Polyline
