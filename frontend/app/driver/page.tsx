@@ -18,6 +18,8 @@ import {
   where
 } from "firebase/firestore";
 
+import polyline from "@mapbox/polyline";
+
 import { db } from "@/lib/firebase";
 
 import useAuth from "@/hooks/useAuth";
@@ -452,12 +454,20 @@ export default function DriverDashboard() {
 
         console.log(
           "ROUTE DATA",
-          data.routes?.[0]
+          JSON.stringify(
+            data.routes?.[0],
+            null,
+            2
+          )
         );
 
         console.log(
           "ROUTE LEG",
-          data.routes?.[0]?.legs?.[0]
+          JSON.stringify(
+            data.routes?.[0]?.legs?.[0],
+            null,
+            2
+          )
         );
 
         if (
@@ -517,33 +527,21 @@ export default function DriverDashboard() {
           }
 
           if (
-            data.routes[0]?.legs?.[0]?.steps
+            data.routes[0]?.overview_polyline
           ) {
 
-            const steps =
-              data.routes[0]
-              .legs[0]
-              .steps;
+            const decoded =
+              polyline.decode(
+                data.routes[0].overview_polyline
+              );
 
-            const coords: [number, number][] = [
-
-              [
-                originLat,
-                originLng
-              ],
-
-              ...steps.map(
-                (step: any) => [
-
-                  step.end_location.lat,
-
-                  step.end_location.lng
-                ] as [number, number]
-              )
-            ];
+            const coordinates =
+              decoded.map(
+                ([lat, lng]) => [lat, lng]
+              );
 
             setRouteCoordinates(
-              coords
+              coordinates
             );
           }
         }

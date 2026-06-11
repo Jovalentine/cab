@@ -11,6 +11,7 @@ import {
   useMap
 } from "react-leaflet";
 
+import polyline from "@mapbox/polyline";
 import {
   collection,
   onSnapshot,
@@ -608,12 +609,20 @@ export default function CustomerDashboard() {
 
         console.log(
           "ROUTE DATA",
-          data.routes?.[0]
+          JSON.stringify(
+            data.routes?.[0],
+            null,
+            2
+          )
         );
 
         console.log(
           "ROUTE LEG",
-          data.routes?.[0]?.legs?.[0]
+          JSON.stringify(
+            data.routes?.[0]?.legs?.[0],
+            null,
+            2
+          )
         );
 
         // IMPROVEMENT 1: Formatted ETA configuration calculations
@@ -676,29 +685,27 @@ export default function CustomerDashboard() {
 
         if (
           !data.routes ||
-          data.routes.length === 0 ||
-          !data.routes[0]?.legs?.[0]?.steps
+          data.routes.length === 0
         ) {
           return;
         }
 
-        const steps =
-          data.routes[0]
-          .legs[0]
-          .steps;
+        const route =
+          data.routes[0];
 
-        const coords = [[
-          originLat,
-          originLng
-        ],
-        ...steps.map(
-          (step: any) => [
-            step.end_location.lat,
-            step.end_location.lng
-          ]
-        )];
+        const decoded =
+          polyline.decode(
+            route.overview_polyline
+          );
 
-        setRouteCoordinates(coords);
+        const coordinates =
+          decoded.map(
+            ([lat, lng]) => [lat, lng]
+          );
+
+        setRouteCoordinates(
+          coordinates
+        );
 
       } catch (error) {
 
