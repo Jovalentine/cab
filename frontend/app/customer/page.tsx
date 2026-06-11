@@ -2,7 +2,14 @@
 
 import axios from "axios";
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState
+} from "react";
+
+import {
+  useMap
+} from "react-leaflet";
 
 import {
   collection,
@@ -85,6 +92,34 @@ const createIcons = async () => {
   };
 };
 
+function FollowDriver({
+  position
+}: {
+  position: {
+    lat: number;
+    lng: number;
+  };
+}) {
+
+  const map = useMap();
+
+  useEffect(() => {
+
+    map.panTo(
+      [
+        position.lat,
+        position.lng
+      ],
+      {
+        animate: true,
+      }
+    );
+
+  }, [position, map]);
+
+  return null;
+}
+
 export default function CustomerDashboard() {
 
   const { userData, loading } = useAuth();
@@ -133,6 +168,16 @@ export default function CustomerDashboard() {
     eta,
     setEta
   ] = useState("");
+
+  const [
+    remainingDistance,
+    setRemainingDistance
+  ] = useState("");
+
+  const [
+    progressPercent,
+    setProgressPercent
+  ] = useState(0);
 
   useEffect(() => {
     createIcons().then(setIcons);
@@ -371,7 +416,9 @@ export default function CustomerDashboard() {
 
     }, [
       driverData?.currentLocation,
-      activeRide?.destination
+      activeRide?.destination,
+      activeRide?.pickup,
+      activeRide?.status
     ]);
 
   // SEARCH DESTINATIONS
@@ -541,16 +588,32 @@ export default function CustomerDashboard() {
       try {
 
         const response =
-          await fetch(
-            `https://api.olamaps.io/routing/v1/directions?origin=${originLat},${originLng}&destination=${destLat},${destLng}&api_key=${process.env.NEXT_PUBLIC_OLA_MAPS_API_KEY}`
+          await axios.post(
+            `${process.env.NEXT_PUBLIC_API_URL}/rides/route-data`,
+            {
+              originLat,
+              originLng,
+              destLat,
+              destLng
+            }
           );
 
         const data =
-          await response.json();
+          response.data;
 
         console.log(
           "ROUTE RESPONSE:",
           data
+        );
+
+        console.log(
+          "ROUTE DATA",
+          data.routes?.[0]
+        );
+
+        console.log(
+          "ROUTE LEG",
+          data.routes?.[0]?.legs?.[0]
         );
 
         // IMPROVEMENT 1: Formatted ETA configuration calculations
@@ -569,6 +632,46 @@ export default function CustomerDashboard() {
             );
 
           setEta(`${mins} mins`);
+
+          const distanceMeters =
+            data.routes[0]
+            .legs[0]
+            .distance;
+
+          const distanceKm =
+            (
+              distanceMeters / 1000
+            ).toFixed(1);
+
+          setRemainingDistance(
+            `${distanceKm} km`
+          );
+
+          if (
+            activeRide?.distanceKm
+          ) {
+
+            const completedPercent =
+              (
+                (
+                  activeRide.distanceKm -
+                  Number(distanceKm)
+                ) /
+                activeRide.distanceKm
+              ) * 100;
+
+            setProgressPercent(
+              Math.max(
+                0,
+                Math.min(
+                  100,
+                  Math.round(
+                    completedPercent
+                  )
+                )
+              )
+            );
+          }
         }
 
         if (
@@ -810,6 +913,60 @@ export default function CustomerDashboard() {
                 {activeRide.status}
               </span>
             </p>
+
+            {
+              activeRide.status ===
+              "in_progress" && (
+
+                <div className="
+                  mt-4
+                ">
+
+                  <p className="
+                    mb-2
+                    font-semibold
+                  ">
+
+                    Ride Progress
+
+                  </p>
+
+                  <div className="
+                    w-full
+                    bg-gray-700
+                    rounded-full
+                    h-3
+                    overflow-hidden
+                  ">
+
+                    <div
+                      className="
+                        bg-green-400
+                        h-full
+                        transition-all
+                        duration-500
+                      "
+                      style={{
+                        width:
+                          `${progressPercent}%`
+                      }}
+                    />
+
+                  </div>
+
+                  <p className="
+                    mt-2
+                    text-sm
+                  ">
+
+                    {progressPercent}% Complete
+
+                  </p>
+
+                </div>
+
+              )
+            }
             {activeRide.status ===
                 "arrived" && (
 
@@ -850,24 +1007,93 @@ export default function CustomerDashboard() {
             </p>
 
             {
-              eta && (
+                  eta && (
 
-                <div className="
-                  mt-3
-                  bg-green-100
-                  text-green-700
-                  px-4
-                  py-3
-                  rounded-xl
-                  inline-block
-                  font-semibold
-                ">
+                    <div className="
+                      mt-4
+                      bg-black
+                      text-white
+                      p-5
+                      rounded-2xl
+                      shadow-lg
+                      max-w-md
+                    ">
 
-                  🚗 Driver arriving in {eta}
+                      <div className="
+                        flex
+                        justify-between
+                        items-center
+                      ">
 
-                </div>
-              )
-            }
+                        <span className="
+                          font-semibold
+                        ">
+                          🚗 Driver
+                        </span>
+
+                        <span>
+                          {
+                            driverData?.name ||
+                            "Searching..."
+                          }
+                        </span>
+
+                      </div>
+
+                      <div className="
+                        mt-3
+                      ">
+
+                        <p>
+
+                          {
+                            activeRide.status ===
+                            "accepted" ||
+
+                            activeRide.status ===
+                            "arrived"
+
+                              ? `⏱ Driver ETA: ${eta}`
+
+                              : `🏁 Destination ETA: ${eta}`
+                          }
+
+                        </p>
+
+                        <p className="mt-2">
+
+                          📏 Remaining:
+                          {" "}
+                          {remainingDistance}
+
+                        </p>
+
+                        <p className="mt-2">
+
+                          🚕 Vehicle:
+                          {" "}
+                          {
+                            activeRide.vehicleType
+                          }
+
+                        </p>
+
+                        <p className="mt-2">
+
+                          Status:
+                          {" "}
+                          {
+                            activeRide.status
+                          }
+
+                        </p>
+
+                      </div>
+
+                    </div>
+
+                  )
+           }
 
             {
               activeRide?.pickup?.lat &&
@@ -884,6 +1110,17 @@ export default function CustomerDashboard() {
                     zoom={15}
                     style={{ height: "100%", width: "100%" }}
                   >
+                    {
+                      animatedDriverPosition && (
+
+                        <FollowDriver
+                          position={
+                            animatedDriverPosition
+                          }
+                        />
+
+                      )
+                    }
                     <TileLayer
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

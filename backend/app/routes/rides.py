@@ -9,6 +9,10 @@ from app.services.fare_engine import (
 from app.services.ola_maps import (
     calculate_distance
 )
+from app.services.ola_maps import (
+    calculate_distance,
+    get_route_data
+)
 
 router = APIRouter(prefix="/rides", tags=["Rides"])
 
@@ -58,7 +62,19 @@ def create_ride(data: dict):
         "rideId": ride_id
     }
 
+@router.post("/route-data")
+def route_data(data: dict):
 
+    result = get_route_data(
+
+        data["originLat"],
+        data["originLng"],
+
+        data["destLat"],
+        data["destLng"]
+    )
+
+    return result
 
 @router.get("/available-rides/{area}")
 def available_rides(area: str):
@@ -143,7 +159,22 @@ def accept_ride(data: dict):
     return {
         "success": True
     }
-    
+
+@router.post("/update-status")
+def update_status(data: dict):
+
+    ride_ref = db.collection("rides").document(
+        data["rideId"]
+    )
+
+    ride_ref.update({
+        "status": data["status"]
+    })
+
+    return {
+        "success": True
+    }
+
 @router.post("/cancel")
 def cancel_ride(data: dict):
 

@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 
 import axios from "axios";
+import dynamic from "next/dynamic";
+
+import {
+  useMap
+} from "react-leaflet";
 
 import {
   collection,
@@ -16,6 +21,96 @@ import {
 import { db } from "@/lib/firebase";
 
 import useAuth from "@/hooks/useAuth";
+
+const MapContainer = dynamic(
+  () =>
+    import("react-leaflet").then(
+      (mod) => mod.MapContainer
+    ),
+  { ssr: false }
+);
+
+const TileLayer = dynamic(
+  () =>
+    import("react-leaflet").then(
+      (mod) => mod.TileLayer
+    ),
+  { ssr: false }
+);
+
+const Marker = dynamic(
+  () =>
+    import("react-leaflet").then(
+      (mod) => mod.Marker
+    ),
+  { ssr: false }
+);
+
+const Popup = dynamic(
+  () =>
+    import("react-leaflet").then(
+      (mod) => mod.Popup
+    ),
+  { ssr: false }
+);
+
+const Polyline = dynamic(
+  () =>
+    import("react-leaflet").then(
+      (mod) => mod.Polyline
+    ),
+  { ssr: false }
+);
+
+const createIcons = async () => {
+  const L = await import("leaflet");
+
+  return {
+    carIcon: new L.Icon({
+      iconUrl: "/car.svg",
+      iconSize: [42, 42],
+      iconAnchor: [21, 42]
+    }),
+    pickupIcon: new L.Icon({
+      iconUrl: "/pickup.svg",
+      iconSize: [42, 42],
+      iconAnchor: [21, 42]
+    }),
+    destinationIcon: new L.Icon({
+      iconUrl: "/destination.svg",
+      iconSize: [42, 42],
+      iconAnchor: [21, 42]
+    }),
+  };
+};
+
+function FollowDriver({
+  position
+}: {
+  position: {
+    lat: number;
+    lng: number;
+  };
+}) {
+
+  const map = useMap();
+
+  useEffect(() => {
+
+    map.panTo(
+      [
+        position.lat,
+        position.lng
+      ],
+      {
+        animate: true,
+      }
+    );
+
+  }, [position, map]);
+
+  return null;
+}
 
 export default function DriverDashboard() {
 
@@ -42,7 +137,48 @@ export default function DriverDashboard() {
     setEnteredOtp
   ] = useState("");
 
+  const [
+    eta,
+    setEta
+  ] = useState("");
+
+  const [
+    remainingDistance,
+    setRemainingDistance
+  ] = useState("");
+
+  const [
+    progressPercent,
+    setProgressPercent
+  ] = useState(0);
+
+  const [
+    routeCoordinates,
+    setRouteCoordinates
+  ] = useState<
+    [number, number][]
+  >([]);
+
+  const [icons, setIcons] =
+    useState<any>(null);
+
+  useEffect(() => {
+    createIcons().then(setIcons);
+  }, []);
+
   // Driver Ride Listener
+  useEffect(() => {
+
+    if (userData) {
+
+      setOnline(
+        userData.online || false
+      );
+
+    }
+
+  }, [userData]);
+
   useEffect(() => {
 
     if (!userData?.uid) return;
@@ -289,6 +425,177 @@ export default function DriverDashboard() {
 
   }, [online]);
 
+  // ROUTE POLYLINE + ETA + REMAINING DISTANCE
+  const getRoutePolyline =
+    async (
+      originLat: number,
+      originLng: number,
+      destLat: number,
+      destLng: number
+    ) => {
+
+      try {
+
+           const response =
+           await axios.post(
+            `${process.env.NEXT_PUBLIC_API_URL}/rides/route-data`,
+                {
+                  originLat,
+                  originLng,
+                  destLat,
+                  destLng
+                }
+              );
+
+            const data =
+              response.data;
+
+        console.log(
+          "ROUTE DATA",
+          data.routes?.[0]
+        );
+
+        console.log(
+          "ROUTE LEG",
+          data.routes?.[0]?.legs?.[0]
+        );
+
+        if (
+          data.routes?.[0]?.legs?.[0]
+        ) {
+
+          const durationSeconds =
+            data.routes[0]
+            .legs[0]
+            .duration;
+
+          const mins =
+            Math.ceil(
+              durationSeconds / 60
+            );
+
+          setEta(
+            `${mins} mins`
+          );
+
+          const distanceMeters =
+            data.routes[0]
+            .legs[0]
+            .distance;
+
+          const distanceKm =
+            (
+              distanceMeters / 1000
+            ).toFixed(1);
+
+          setRemainingDistance(
+            `${distanceKm} km`
+          );
+
+          if (
+            activeRide?.distanceKm
+          ) {
+
+            const progress =
+              (
+                (
+                  activeRide.distanceKm -
+                  Number(distanceKm)
+                ) /
+                activeRide.distanceKm
+              ) * 100;
+
+            setProgressPercent(
+              Math.max(
+                0,
+                Math.min(
+                  100,
+                  Math.round(progress)
+                )
+              )
+            );
+          }
+
+          if (
+            data.routes[0]?.legs?.[0]?.steps
+          ) {
+
+            const steps =
+              data.routes[0]
+              .legs[0]
+              .steps;
+
+            const coords: [number, number][] = [
+
+              [
+                originLat,
+                originLng
+              ],
+
+              ...steps.map(
+                (step: any) => [
+
+                  step.end_location.lat,
+
+                  step.end_location.lng
+                ] as [number, number]
+              )
+            ];
+
+            setRouteCoordinates(
+              coords
+            );
+          }
+        }
+
+      } catch (error) {
+
+        console.log(
+          "ROUTE ERROR:",
+          error
+        );
+      }
+    };
+
+  // FETCH ROUTE WHEN ACTIVE RIDE EXISTS
+  useEffect(() => {
+
+    if (
+      !activeRide ||
+      !userData?.currentLocation
+    ) return;
+
+    if (
+      activeRide.status === "accepted" ||
+      activeRide.status === "arrived"
+    ) {
+
+      // NAVIGATE TO PICKUP
+      getRoutePolyline(
+        userData.currentLocation.lat,
+        userData.currentLocation.lng,
+        activeRide.pickup.lat,
+        activeRide.pickup.lng
+      );
+
+    } else if (
+      activeRide.status === "in_progress"
+    ) {
+
+      // NAVIGATE TO DESTINATION
+      getRoutePolyline(
+        userData.currentLocation.lat,
+        userData.currentLocation.lng,
+        activeRide.destination.lat,
+        activeRide.destination.lng
+      );
+    }
+
+ }, [
+  activeRide,
+  userData?.currentLocation
+]);
+
   // Accept Ride
   const acceptRide =
     async (rideId: string) => {
@@ -386,6 +693,8 @@ export default function DriverDashboard() {
               "in_progress"
           }
         );
+
+        setEnteredOtp("");
 
       } catch (error) {
 
@@ -572,7 +881,246 @@ export default function DriverDashboard() {
             flex-wrap
           ">
 
-            {/* STEP 7: Replaced active status action handlers */}
+            {/* NAVIGATION CARD */}
+            {
+              eta && (
+
+                <div className="
+                  bg-black
+                  text-white
+                  p-5
+                  rounded-2xl
+                  mb-4
+                  w-full
+                ">
+
+                  <h2 className="
+                    text-xl
+                    font-bold
+                  ">
+
+                    🚕 Current Trip
+
+                  </h2>
+
+                  <p className="mt-3">
+                    {
+                      activeRide.status === "accepted" ||
+                      activeRide.status === "arrived"
+                        ? `📍 Pickup ETA: ${eta}`
+                        : `🏁 Destination ETA: ${eta}`
+                    }
+                  </p>
+
+                  <p className="mt-2">
+                    Remaining:
+                    {" "}
+                    {remainingDistance}
+                  </p>
+
+                  <p className="mt-2">
+
+                    Status:
+
+                    <span
+                      className={`
+                        ml-2
+                        px-3
+                        py-1
+                        rounded-full
+                        text-sm
+                        ${
+                          activeRide.status ===
+                          "accepted"
+
+                            ? "bg-blue-500"
+
+                          : activeRide.status ===
+                            "arrived"
+
+                            ? "bg-yellow-500"
+
+                          : activeRide.status ===
+                            "in_progress"
+
+                            ? "bg-green-600"
+
+                            : "bg-gray-500"
+                        }
+                      `}
+                    >
+
+                      {activeRide.status}
+
+                    </span>
+
+                  </p>
+
+                  {
+                    activeRide.status ===
+                    "in_progress" && (
+
+                      <div className="
+                        mt-4
+                      ">
+
+                        <p className="
+                          mb-2
+                          font-semibold
+                        ">
+
+                          Ride Progress
+
+                        </p>
+
+                        <div className="
+                          w-full
+                          h-3
+                          bg-gray-700
+                          rounded-full
+                          overflow-hidden
+                        ">
+
+                          <div
+                            className="
+                              h-full
+                              bg-green-400
+                              transition-all
+                              duration-500
+                            "
+                            style={{
+                              width:
+                                `${progressPercent}%`
+                            }}
+                          />
+
+                        </div>
+
+                        <p className="
+                          mt-2
+                          text-sm
+                        ">
+
+                          {progressPercent}% Complete
+
+                        </p>
+
+                      </div>
+
+                    )
+                  }
+
+                </div>
+
+              )
+            }
+
+            {/* DRIVER MAP */}
+            {
+              userData?.currentLocation &&
+              icons && (
+
+                <div
+                  className="
+                    h-[500px]
+                    mt-6
+                    rounded-2xl
+                    overflow-hidden
+                    w-full
+                  "
+                >
+
+                  <MapContainer
+                    center={[
+                      userData.currentLocation.lat,
+                      userData.currentLocation.lng
+                    ]}
+                    zoom={14}
+                    style={{
+                      height: "100%",
+                      width: "100%"
+                    }}
+                  >
+
+                    <FollowDriver
+                      position={
+                        userData.currentLocation
+                      }
+                    />
+
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    />
+
+                    {/* DRIVER */}
+                    <Marker
+                      position={[
+                        userData.currentLocation.lat,
+                        userData.currentLocation.lng
+                      ]}
+                      icon={icons.carIcon}
+                    >
+                      <Popup>
+                        Your Location
+                      </Popup>
+                    </Marker>
+
+                    {/* PICKUP */}
+                    <Marker
+                      position={[
+                        activeRide.pickup.lat,
+                        activeRide.pickup.lng
+                      ]}
+                      icon={icons.pickupIcon}
+                    >
+                      <Popup>
+                        Pickup
+                      </Popup>
+                    </Marker>
+
+                    {/* DESTINATION */}
+                    {
+                          activeRide.status ===
+                          "in_progress" && (
+
+                            <Marker
+                              position={[
+                                activeRide.destination.lat,
+                                activeRide.destination.lng
+                              ]}
+                              icon={icons.destinationIcon}
+                            >
+                              <Popup>
+                                Destination
+                              </Popup>
+                            </Marker>
+
+                          )
+              }
+
+                    {/* ROUTE */}
+                    {
+                      routeCoordinates.length > 0 && (
+                        <Polyline
+                          positions={routeCoordinates}
+                          color={
+                            activeRide.status ===
+                            "in_progress"
+                              ? "#22c55e"
+                              : "#3b82f6"
+                          }
+                          weight={7}
+                        />
+                      )
+                    }
+
+                  </MapContainer>
+
+                </div>
+
+              )
+            }
             {activeRide.status ===
               "accepted" && (
 

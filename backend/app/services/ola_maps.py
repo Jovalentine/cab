@@ -60,3 +60,33 @@ def calculate_distance(origin_lat, origin_lng, dest_lat, dest_lng):
 
     distance_km = distance_meters / 1000
     return round(distance_km, 1)
+
+
+def get_route_data(
+    origin_lat,
+    origin_lng,
+    dest_lat,
+    dest_lng
+):
+
+    url = (
+        "https://api.olamaps.io/routing/v1/directions"
+    )
+
+    params = {
+        "origin":
+            f"{origin_lat},{origin_lng}",
+
+        "destination":
+            f"{dest_lat},{dest_lng}",
+
+        "api_key":
+            OLA_API_KEY
+    }
+
+    response = requests.post(
+        url,
+        params=params
+    )
+
+    return response.json()
