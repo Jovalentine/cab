@@ -248,12 +248,7 @@ export default function DriverDashboard() {
     if (!online) return;
 
     const ridesQuery = query(
-      collection(db, "rides"),
-      where(
-        "status",
-        "==",
-        "searching"
-      )
+      collection(db, "rides")
     );
 
     const unsubscribe =
@@ -275,9 +270,10 @@ export default function DriverDashboard() {
           const availableRides =
             rides.filter((ride) => {
 
-              // RIDE MUST BE SEARCHING
+              // RIDE MUST BE SEARCHING OR SCHEDULED
               if (
-                ride.status !== "searching"
+                ride.status !== "searching" &&
+                ride.status !== "scheduled"
               ) {
                 return false;
               }
@@ -628,6 +624,29 @@ export default function DriverDashboard() {
 
         // CLEAR AVAILABLE RIDES
         setAvailableRides([]);
+
+      } catch (error) {
+
+        console.log(error);
+      }
+    };
+
+  // Reserve Scheduled Ride
+  const reserveRide =
+    async (
+      rideId: string
+    ) => {
+
+      try {
+
+        await axios.post(
+          `${process.env.NEXT_PUBLIC_API_URL}/rides/reserve`,
+          {
+            rideId,
+            driverId:
+              userData.uid
+          }
+        );
 
       } catch (error) {
 
@@ -1247,6 +1266,26 @@ export default function DriverDashboard() {
                 "
               >
 
+                {
+                  ride.rideType ===
+                  "scheduled" && (
+
+                    <div className="
+                      bg-blue-100
+                      text-blue-700
+                      px-3
+                      py-1
+                      rounded-full
+                      inline-block
+                      text-sm
+                      mb-2
+                    ">
+                      📅 Scheduled Ride
+                    </div>
+
+                  )
+                }
+
                 <p>
                   {
                     ride.pickup
@@ -1285,25 +1324,75 @@ export default function DriverDashboard() {
                   </span>
                 </p>
 
-                <button
-                  onClick={() =>
-                    acceptRide(
-                      ride.rideId
-                    )
-                  }
-                  className="
-                    mt-4
-                    bg-black
-                    text-white
-                    px-5
-                    py-3
-                    rounded-xl
-                  "
-                >
+                {
+                  ride.rideType ===
+                  "scheduled" && (
 
-                  Accept Ride
+                    <div className="mt-2">
 
-                </button>
+                      <p>
+                        Date:
+                        {" "}
+                        {ride.pickupDate}
+                      </p>
+
+                      <p>
+                        Time:
+                        {" "}
+                        {ride.pickupTime}
+                      </p>
+
+                    </div>
+
+                  )
+                }
+
+                {
+                  ride.rideType ===
+                  "scheduled"
+                    ? (
+                        <button
+                          onClick={() =>
+                            reserveRide(
+                              ride.rideId
+                            )
+                          }
+                          className="
+                            mt-4
+                            bg-blue-600
+                            text-white
+                            px-5
+                            py-3
+                            rounded-xl
+                          "
+                        >
+
+                          Reserve Ride
+
+                        </button>
+                      )
+                    : (
+                        <button
+                          onClick={() =>
+                            acceptRide(
+                              ride.rideId
+                            )
+                          }
+                          className="
+                            mt-4
+                            bg-black
+                            text-white
+                            px-5
+                            py-3
+                            rounded-xl
+                          "
+                        >
+
+                          Accept Ride
+
+                        </button>
+                      )
+                }
 
               </div>
 

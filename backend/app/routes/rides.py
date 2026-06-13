@@ -22,6 +22,12 @@ def create_ride(data: dict):
 
     ride_id = str(uuid4())
 
+    status = (
+        "scheduled"
+        if data.get("rideType") == "scheduled"
+        else "searching"
+    )
+
     ride_data = {
 
         "rideId": ride_id,
@@ -42,12 +48,26 @@ def create_ride(data: dict):
                 "any"
             ),
 
+        "rideType":
+            data.get(
+                "rideType",
+                "now"
+            ),
+
+        "pickupDate":
+            data.get("pickupDate", ""),
+
+        "pickupTime":
+            data.get("pickupTime", ""),
+
         "driverId": None,
-        
+
+        "reservedDriverId": None,
+
         "otp":
             data["otp"],
 
-        "status": "searching",
+        "status": status,
 
         "createdAt":
             firestore.SERVER_TIMESTAMP
@@ -169,6 +189,24 @@ def update_status(data: dict):
 
     ride_ref.update({
         "status": data["status"]
+    })
+
+    return {
+        "success": True
+    }
+
+@router.post("/reserve")
+def reserve_ride(data: dict):
+
+    ride_ref = db.collection("rides").document(
+        data["rideId"]
+    )
+
+    ride_ref.update({
+        "reservedDriverId":
+            data["driverId"],
+        "status":
+            "reserved"
     })
 
     return {

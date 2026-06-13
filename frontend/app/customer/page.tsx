@@ -128,9 +128,40 @@ export default function CustomerDashboard() {
   const [destination,
     setDestination] = useState("");
 
+  const [pickupQuery, setPickupQuery] =
+    useState("");
+
+  const [pickupLocation,
+    setPickupLocation] =
+    useState<any>(null);
+
+  const [pickupSuggestions,
+    setPickupSuggestions] =
+    useState<any[]>([]);
+
+  const [
+    useCurrentLocation,
+    setUseCurrentLocation
+  ] = useState(true);
+
   const [vehicleType,
     setVehicleType] =
     useState("any");
+
+  const [
+    rideType,
+    setRideType
+  ] = useState("now");
+
+  const [
+    pickupDate,
+    setPickupDate
+  ] = useState("");
+
+  const [
+    pickupTime,
+    setPickupTime
+  ] = useState("");
 
   const [suggestions,
     setSuggestions] = useState([]);
@@ -422,6 +453,57 @@ export default function CustomerDashboard() {
       activeRide?.status
     ]);
 
+  // SEARCH PICKUP
+  const searchPickup =
+    async (query: string) => {
+
+      if (!query) {
+
+        setPickupSuggestions([]);
+        return;
+      }
+
+      try {
+
+        const response =
+          await axios.get(
+            "https://api.olamaps.io/places/v1/autocomplete",
+            {
+              params: {
+                input: query,
+                api_key:
+                  process.env
+                  .NEXT_PUBLIC_OLA_MAPS_API_KEY
+              }
+            }
+          );
+
+        setPickupSuggestions(
+          response.data.predictions || []
+        );
+
+      } catch (error) {
+
+        console.log(error);
+      }
+    };
+
+  useEffect(() => {
+
+    const timeout =
+      setTimeout(() => {
+
+        searchPickup(
+          pickupQuery
+        );
+
+      }, 400);
+
+    return () =>
+      clearTimeout(timeout);
+
+  }, [pickupQuery]);
+
   // SEARCH DESTINATIONS
   const searchPlaces =
     async (value: string) => {
@@ -543,9 +625,11 @@ export default function CustomerDashboard() {
             `${process.env.NEXT_PUBLIC_API_URL}/rides/calculate-distance`,
             {
               originLat:
+                pickupLocation?.lat ??
                 currentLocation.lat,
 
               originLng:
+                pickupLocation?.lng ??
                 currentLocation.lng,
 
               destLat:
@@ -725,6 +809,38 @@ export default function CustomerDashboard() {
         return;
       }
 
+      if (
+        rideType ===
+        "scheduled"
+      ) {
+
+        if (
+          !pickupDate ||
+          !pickupTime
+        ) {
+
+          alert(
+            "Select date and time"
+          );
+
+          return;
+        }
+
+        const scheduledDateTime =
+          new Date(
+            `${pickupDate}T${pickupTime}`
+          );
+
+        if (
+          scheduledDateTime <= new Date()
+        ) {
+          alert(
+            "Please select a future date and time"
+          );
+          return;
+        }
+      }
+
       try {
 
         // GET DESTINATION COORDINATES
@@ -736,12 +852,21 @@ export default function CustomerDashboard() {
           return;
         }
 
-        const pickup = {
-          address:
-            "Current Location",
-          lat: currentLocation.lat,
-          lng: currentLocation.lng
-        };
+        const pickup = pickupLocation
+          ? {
+              address:
+                pickupLocation.description,
+              lat:
+                pickupLocation.lat,
+              lng:
+                pickupLocation.lng
+            }
+          : {
+              address:
+                "Current Location",
+              lat: currentLocation.lat,
+              lng: currentLocation.lng
+            };
 
         const destinationData = {
           address: destination,
@@ -782,10 +907,17 @@ export default function CustomerDashboard() {
 
             vehicleType:
               vehicleType,
-              otp:
-                Math.floor(
-                   1000 + Math.random() * 9000
-                   ).toString(),
+
+            rideType,
+
+            pickupDate,
+
+            pickupTime,
+
+            otp:
+              Math.floor(
+                 1000 + Math.random() * 9000
+                 ).toString(),
           }
         );
 
@@ -1240,6 +1372,97 @@ export default function CustomerDashboard() {
 
           </h2>
 
+          <h3 className="font-bold mb-2">
+            Pickup Location
+          </h3>
+
+          <label className="
+            flex
+            items-center
+            gap-2
+            mb-3
+          ">
+
+            <input
+              type="checkbox"
+              checked={useCurrentLocation}
+              onChange={(e) => {
+
+                setUseCurrentLocation(
+                  e.target.checked
+                );
+
+                if (e.target.checked) {
+
+                  setPickupLocation(null);
+                  setPickupQuery("");
+                  setPickupSuggestions([]);
+                }
+              }}
+            />
+
+            <span>
+              Use Current Location
+            </span>
+
+          </label>
+
+          {
+            !useCurrentLocation && (
+              <>
+                <input
+                  type="text"
+                  value={pickupQuery}
+                  onChange={(e) =>
+                    setPickupQuery(e.target.value)
+                  }
+                  placeholder="Enter pickup location"
+                  className="
+                    w-full
+                    p-3
+                    border
+                    rounded-lg
+                    mb-4
+                  "
+                />
+
+                {
+                  pickupSuggestions.map(
+                    (item, index) => (
+
+                      <div
+                        key={index}
+                        onClick={() => {
+
+                          setPickupQuery(
+                            item.description
+                          );
+
+                          setPickupLocation(
+                            item
+                          );
+
+                          setPickupSuggestions(
+                            []
+                          );
+                        }}
+                        className="
+                          p-2
+                          border-b
+                          cursor-pointer
+                        "
+                      >
+
+                        {item.description}
+
+                      </div>
+                    )
+                  )
+                }
+              </>
+            )
+          }
+
           <input
             type="text"
             placeholder="Destination"
@@ -1336,6 +1559,109 @@ export default function CustomerDashboard() {
           </div>
 
           <div className="mt-5">
+
+            <h3 className="
+              font-semibold
+              mb-3
+            ">
+              Ride Type
+            </h3>
+
+            <div className="
+              grid
+              grid-cols-2
+              gap-3
+            ">
+
+              <button
+                onClick={() => {
+                  setRideType("now");
+                  setPickupDate("");
+                  setPickupTime("");
+                }}
+                className={`
+                  p-3
+                  rounded-xl
+                  border
+                  ${
+                    rideType === "now"
+                      ? "bg-black text-white"
+                      : "bg-white"
+                  }
+                `}
+              >
+                Ride Now
+              </button>
+
+              <button
+                onClick={() =>
+                  setRideType("scheduled")
+                }
+                className={`
+                  p-3
+                  rounded-xl
+                  border
+                  ${
+                    rideType === "scheduled"
+                      ? "bg-black text-white"
+                      : "bg-white"
+                  }
+                `}
+              >
+                Schedule Ride
+              </button>
+
+            </div>
+
+          </div>
+
+          {
+            rideType ===
+            "scheduled" && (
+
+              <div className="
+                mt-4
+                space-y-3
+              ">
+
+                <input
+                  type="date"
+                  value={pickupDate}
+                  onChange={(e) =>
+                    setPickupDate(
+                      e.target.value
+                    )
+                  }
+                  className="
+                    w-full
+                    p-3
+                    border
+                    rounded-xl
+                  "
+                />
+
+                <input
+                  type="time"
+                  value={pickupTime}
+                  onChange={(e) =>
+                    setPickupTime(
+                      e.target.value
+                    )
+                  }
+                  className="
+                    w-full
+                    p-3
+                    border
+                    rounded-xl
+                  "
+                />
+
+              </div>
+
+            )
+          }
+
+          <div className="mt-5">
             <h3 className="
               font-semibold
               mb-3
@@ -1424,6 +1750,63 @@ export default function CustomerDashboard() {
             </div>
 
           </div>
+
+          {
+            rideType === "scheduled" &&
+            pickupDate &&
+            pickupTime && (
+
+              <div className="
+                mt-4
+                bg-blue-50
+                border
+                border-blue-200
+                p-4
+                rounded-xl
+              ">
+
+                <p className="
+                  font-semibold
+                  mb-2
+                ">
+                  📅 Scheduled Ride
+                </p>
+
+                <p>
+                  Date:{" "}
+                  {
+                    new Date(pickupDate)
+                    .toLocaleDateString(
+                      "en-GB",
+                      {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric"
+                      }
+                    )
+                  }
+                </p>
+
+                <p className="mt-1">
+                  Time:{" "}
+                  {
+                    new Date(
+                      `${pickupDate}T${pickupTime}`
+                    ).toLocaleTimeString(
+                      "en-US",
+                      {
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true
+                      }
+                    )
+                  }
+                </p>
+
+              </div>
+
+            )
+          }
 
           <button
             onClick={createRide}
