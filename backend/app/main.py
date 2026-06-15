@@ -1,10 +1,24 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from apscheduler.schedulers.background import BackgroundScheduler
 
+from app.services.scheduler import (
+    activate_reserved_rides
+)
 from app.routes.rides import router as ride_router
 from app.routes.drivers import router as driver_router
 
 app = FastAPI()
+
+scheduler = BackgroundScheduler()
+
+scheduler.add_job(
+    activate_reserved_rides,
+    "interval",
+    minutes=1
+)
+
+scheduler.start()
 
 # CORS CONFIG
 origins = [

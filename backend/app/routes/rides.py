@@ -196,10 +196,15 @@ def update_status(data: dict):
     }
 
 @router.post("/reserve")
-def reserve_ride(data: dict):
+def reserve_ride(
+    data: dict
+):
 
-    ride_ref = db.collection("rides").document(
-        data["rideId"]
+    ride_ref = (
+        db.collection("rides")
+        .document(
+            data["rideId"]
+        )
     )
 
     ride_ref.update({
@@ -212,6 +217,18 @@ def reserve_ride(data: dict):
     return {
         "success": True
     }
+
+@router.post("/cancel-reservation")
+def cancel_reservation(data: dict):
+
+    db.collection("rides") \
+      .document(data["rideId"]) \
+      .update({
+          "status": "scheduled",
+          "reservedDriverId": None
+      })
+
+    return {"success": True}
 
 @router.post("/cancel")
 def cancel_ride(data: dict):

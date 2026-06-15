@@ -302,7 +302,12 @@ export default function CustomerDashboard() {
   // DRIVER REALTIME LISTENER
   useEffect(() => {
 
-    if (!activeRide?.driverId) {
+    const driverId =
+      activeRide?.status === "reserved"
+        ? activeRide?.reservedDriverId
+        : activeRide?.driverId;
+
+    if (!driverId) {
 
       setDriverData(null);
 
@@ -314,7 +319,7 @@ export default function CustomerDashboard() {
       where(
         "uid",
         "==",
-        activeRide.driverId
+        driverId
       )
     );
 
@@ -1046,12 +1051,58 @@ export default function CustomerDashboard() {
                     ? "text-yellow-600"
                     : activeRide.status === "accepted"
                     ? "text-blue-600"
+                    : activeRide.status === "reserved"
+                    ? "text-indigo-600"
                     : "text-purple-600"
                 }
               `}>
-                {activeRide.status}
+                {
+                  activeRide.status === "reserved"
+                    ? "Reserved"
+                    : activeRide.status
+                }
               </span>
             </p>
+
+            {
+              activeRide.status ===
+              "reserved" && (
+
+                <div className="
+                  mt-3
+                  bg-indigo-50
+                  border
+                  border-indigo-200
+                  rounded-xl
+                  p-4
+                ">
+
+                  <p className="font-semibold">
+                    📅 Scheduled Ride Reserved
+                  </p>
+
+                  <p className="mt-2">
+                    Driver:
+                    {" "}
+                    {driverData?.name || "Assigning..."}
+                  </p>
+
+                  <p>
+                    Date:
+                    {" "}
+                    {activeRide.pickupDate}
+                  </p>
+
+                  <p>
+                    Time:
+                    {" "}
+                    {activeRide.pickupTime}
+                  </p>
+
+                </div>
+
+              )
+            }
 
             {
               activeRide.status ===

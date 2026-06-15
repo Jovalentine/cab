@@ -133,6 +133,10 @@ export default function DriverDashboard() {
     setRideHistory] =
       useState<any[]>([]);
 
+  const [reservedRide,
+    setReservedRide] =
+      useState<any>(null);
+
   // STEP 5: Added enteredOtp state
   const [
     enteredOtp,
@@ -237,6 +241,51 @@ export default function DriverDashboard() {
         setRideHistory(history);
 
       });
+
+    return () => unsubscribe();
+
+  }, [userData]);
+
+  // RESERVED RIDE LISTENER
+  useEffect(() => {
+
+    if (!userData?.uid) return;
+
+    const reservedQuery = query(
+      collection(db, "rides"),
+      where(
+        "reservedDriverId",
+        "==",
+        userData.uid
+      )
+    );
+
+    const unsubscribe =
+      onSnapshot(
+        reservedQuery,
+        (snapshot) => {
+
+          const rides: any[] = [];
+
+          snapshot.forEach((doc) => {
+
+            rides.push({
+              id: doc.id,
+              ...doc.data()
+            });
+
+          });
+
+          const current =
+            rides.find(
+              (ride) =>
+                ride.status === "reserved"
+            );
+
+          setReservedRide(current || null);
+
+        }
+      );
 
     return () => unsubscribe();
 
@@ -654,6 +703,26 @@ export default function DriverDashboard() {
       }
     };
 
+  const cancelReservation =
+    async () => {
+
+      if (!reservedRide) return;
+
+      try {
+
+        await axios.post(
+          `${process.env.NEXT_PUBLIC_API_URL}/rides/cancel-reservation`,
+          {
+            rideId: reservedRide.id
+          }
+        );
+
+      } catch (error) {
+
+        console.log(error);
+      }
+    };
+
   // STEP 3: Added arrivedRide function
   const arrivedRide =
     async () => {
@@ -819,6 +888,102 @@ export default function DriverDashboard() {
         </button>
 
       </div>
+
+      {/* RESERVED RIDE */}
+
+      {
+        reservedRide && (
+
+          <div className="
+            bg-blue-50
+            border
+            border-blue-200
+            p-6
+            rounded-2xl
+            shadow
+            max-w-2xl
+            mb-6
+          ">
+
+            <div className="
+              bg-blue-100
+              text-blue-700
+              px-3
+              py-1
+              rounded-full
+              inline-block
+              text-sm
+              mb-3
+            ">
+              📅 Reserved Ride
+            </div>
+
+            <div className="space-y-2">
+
+              <p>
+                Pickup:
+                {" "}
+                {
+                  reservedRide.pickup
+                  .address
+                }
+              </p>
+
+              <p>
+                Destination:
+                {" "}
+                {
+                  reservedRide.destination
+                  .address
+                }
+              </p>
+
+              <p>
+                Date:
+                {" "}
+                {reservedRide.pickupDate}
+              </p>
+
+              <p>
+                Time:
+                {" "}
+                {reservedRide.pickupTime}
+              </p>
+
+              <p>
+                Fare:
+                {" "}
+                ₹{reservedRide.estimatedFare}
+              </p>
+
+              <p>
+                Distance:
+                {" "}
+                {reservedRide.distanceKm} km
+              </p>
+
+            </div>
+
+            <button
+              onClick={cancelReservation}
+              className="
+                mt-4
+                bg-red-500
+                text-white
+                px-5
+                py-3
+                rounded-xl
+              "
+            >
+
+              Cancel Reservation
+
+            </button>
+
+          </div>
+
+        )
+      }
 
       {/* ACTIVE RIDE */}
 
