@@ -172,6 +172,44 @@ export default function DriverDashboard() {
     createIcons().then(setIcons);
   }, []);
 
+  const [waitingMinutes, setWaitingMinutes] =
+    useState(0);
+
+  // LIVE WAITING TIMER
+  useEffect(() => {
+
+    if (
+      activeRide?.status !== "waiting_return" ||
+      !activeRide?.waitingStartedAt
+    ) {
+      return;
+    }
+
+    const updateWaitingMinutes = () => {
+
+      const minutes = Math.floor(
+        (Date.now() -
+          activeRide.waitingStartedAt.toDate().getTime()) /
+        60000
+      );
+
+      setWaitingMinutes(minutes);
+    };
+
+    updateWaitingMinutes();
+
+    const interval = setInterval(
+      updateWaitingMinutes,
+      60000
+    );
+
+    return () => clearInterval(interval);
+
+  }, [
+    activeRide?.status,
+    activeRide?.waitingStartedAt
+  ]);
+
   // Driver Ride Listener
   useEffect(() => {
 
@@ -632,6 +670,18 @@ export default function DriverDashboard() {
         activeRide.destination.lat,
         activeRide.destination.lng
       );
+
+    } else if (
+      activeRide.status === "in_progress_return"
+    ) {
+
+      // NAVIGATE BACK TO PICKUP
+      getRoutePolyline(
+        userData.currentLocation.lat,
+        userData.currentLocation.lng,
+        activeRide.pickup.lat,
+        activeRide.pickup.lng
+      );
     }
 
  }, [
@@ -642,6 +692,15 @@ export default function DriverDashboard() {
   // Accept Ride
   const acceptRide =
     async (rideId: string) => {
+
+      if (isReservedRideSoon()) {
+
+        alert(
+          "You have a scheduled ride soon."
+        );
+
+        return;
+      }
 
       try {
 
@@ -679,6 +738,38 @@ export default function DriverDashboard() {
         console.log(error);
       }
     };
+
+  const isReservedRideSoon = () => {
+
+    if (!reservedRide) return false;
+
+    const pickupDateTime = new Date(
+      `${reservedRide.pickupDate}T${reservedRide.pickupTime}`
+    );
+
+    const minutesUntilPickup =
+      (pickupDateTime.getTime() - Date.now()) /
+      (1000 * 60);
+
+    return (
+      minutesUntilPickup > 0 &&
+      minutesUntilPickup <= 60
+    );
+  };
+
+  const getMinutesUntilPickup = () => {
+
+    if (!reservedRide) return 0;
+
+    const pickupDateTime = new Date(
+      `${reservedRide.pickupDate}T${reservedRide.pickupTime}`
+    );
+
+    return Math.ceil(
+      (pickupDateTime.getTime() - Date.now()) /
+      (1000 * 60)
+    );
+  };
 
   // Reserve Scheduled Ride
   const reserveRide =
@@ -834,6 +925,52 @@ export default function DriverDashboard() {
         console.log(error);
       }
     };
+
+  const startWaiting = async () => {
+
+    if (!activeRide) return;
+
+    try {
+
+      await updateDoc(
+        doc(db, "rides", activeRide.id),
+        {
+          status: "waiting_return",
+          waitingStartedAt: new Date()
+        }
+      );
+
+    } catch (error) {
+
+      console.log(error);
+    }
+  };
+
+  const startReturnTrip = async () => {
+
+    if (!activeRide) return;
+
+    try {
+
+      const waitingMinutes = Math.ceil(
+        (Date.now() -
+          activeRide.waitingStartedAt.toDate().getTime()) /
+        60000
+      );
+
+      await updateDoc(
+        doc(db, "rides", activeRide.id),
+        {
+          status: "in_progress_return",
+          waitingMinutes
+        }
+      );
+
+    } catch (error) {
+
+      console.log(error);
+    }
+  };
 
   if (loading) {
     return <div>Loading...</div>;
@@ -1139,8 +1276,10 @@ export default function DriverDashboard() {
                   </p>
 
                   {
-                    activeRide.status ===
-                    "in_progress" && (
+                    [
+                      "in_progress",
+                      "in_progress_return"
+                    ].includes(activeRide.status) && (
 
                       <div className="
                         mt-4
@@ -1263,8 +1402,10 @@ export default function DriverDashboard() {
 
                     {/* DESTINATION */}
                     {
-                          activeRide.status ===
-                          "in_progress" && (
+                          [
+                            "in_progress",
+                            "in_progress_return"
+                          ].includes(activeRide.status) && (
 
                             <Marker
                               position={[
@@ -1287,8 +1428,10 @@ export default function DriverDashboard() {
                         <Polyline
                           positions={routeCoordinates}
                           color={
-                            activeRide.status ===
-                            "in_progress"
+                            [
+                              "in_progress",
+                              "in_progress_return"
+                            ].includes(activeRide.status)
                               ? "#22c55e"
                               : "#3b82f6"
                           }
@@ -1368,8 +1511,90 @@ export default function DriverDashboard() {
 
             )}
 
-            {activeRide.status ===
-              "in_progress" && (
+            {
+              activeRide?.tripType === "round_trip" &&
+              activeRide?.status === "in_progress" && (
+
+                <button
+                  onClick={startWaiting}
+                  className="
+                    bg-indigo-600
+                    text-white
+                    px-5
+                    py-3
+                    rounded-xl
+                  "
+                >
+
+                  Start Waiting
+
+                </button>
+
+              )
+            }
+
+            {
+              activeRide?.status === "waiting_return" && (
+
+                <p>
+                  ⏱ Waiting Time:
+                  {" "}
+                  {waitingMinutes} min
+                </p>
+
+              )
+            }
+
+            {
+              activeRide?.status === "waiting_return" && (
+
+                <button
+                  onClick={startReturnTrip}
+                  className="
+                    bg-green-600
+                    text-white
+                    px-5
+                    py-3
+                    rounded-xl
+                  "
+                >
+
+                  Start Return Trip
+
+                </button>
+
+              )
+            }
+
+            {
+              activeRide?.waitCharge > 0 && (
+
+                <div className="
+                  bg-gray-100
+                  p-4
+                  rounded-xl
+                ">
+
+                  ⏳ Waited:
+                  {" "}
+                  {activeRide.waitTimeMinutes} min
+
+                  <br />
+
+                  💰 Extra:
+                  {" "}
+                  ₹{activeRide.waitCharge}
+
+                </div>
+
+              )
+            }
+
+            {
+              (
+                activeRide?.status === "in_progress" ||
+                activeRide?.status === "in_progress_return"
+              ) && (
 
               <button
                 onClick={() =>
@@ -1400,7 +1625,37 @@ export default function DriverDashboard() {
 
       {/* AVAILABLE RIDES */}
 
-      {online && !activeRide && (
+      {
+        isReservedRideSoon() && (
+
+          <div className="
+            bg-yellow-100
+            border
+            border-yellow-300
+            rounded-xl
+            p-4
+            mb-6
+          ">
+
+            <h3 className="font-bold">
+              🚕 Upcoming Scheduled Ride
+            </h3>
+
+            <p>
+              New ride requests are paused until
+              your scheduled pickup is completed.
+            </p>
+
+            <p className="mt-2">
+              Pickup starts in {getMinutesUntilPickup()} minutes.
+            </p>
+
+          </div>
+
+        )
+      }
+
+      {online && !activeRide && !isReservedRideSoon() && (
 
         <div className="mt-10">
 
@@ -1505,6 +1760,28 @@ export default function DriverDashboard() {
                         Time:
                         {" "}
                         {ride.pickupTime}
+                      </p>
+
+                    </div>
+
+                  )
+                }
+
+                {
+                  ride.tripType === "round_trip" && (
+
+                    <div className="mt-2">
+
+                      <p>
+                        🔄 Round Trip
+                      </p>
+
+                      <p>
+                        Return:
+                        {" "}
+                        {ride.returnDate}
+                        {" "}
+                        {ride.returnTime}
                       </p>
 
                     </div>

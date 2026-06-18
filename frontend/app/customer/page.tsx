@@ -163,6 +163,15 @@ export default function CustomerDashboard() {
     setPickupTime
   ] = useState("");
 
+  const [tripType, setTripType] =
+    useState("one_way");
+
+  const [returnDate, setReturnDate] =
+    useState("");
+
+  const [returnTime, setReturnTime] =
+    useState("");
+
   const [suggestions,
     setSuggestions] = useState([]);
 
@@ -210,6 +219,44 @@ export default function CustomerDashboard() {
     progressPercent,
     setProgressPercent
   ] = useState(0);
+
+  const [waitingMinutes, setWaitingMinutes] =
+    useState(0);
+
+  // LIVE WAITING TIMER
+  useEffect(() => {
+
+    if (
+      activeRide?.status !== "waiting_return" ||
+      !activeRide?.waitingStartedAt
+    ) {
+      return;
+    }
+
+    const updateWaitingMinutes = () => {
+
+      const minutes = Math.floor(
+        (Date.now() -
+          activeRide.waitingStartedAt.toDate().getTime()) /
+        60000
+      );
+
+      setWaitingMinutes(minutes);
+    };
+
+    updateWaitingMinutes();
+
+    const interval = setInterval(
+      updateWaitingMinutes,
+      60000
+    );
+
+    return () => clearInterval(interval);
+
+  }, [
+    activeRide?.status,
+    activeRide?.waitingStartedAt
+  ]);
 
   useEffect(() => {
     createIcons().then(setIcons);
@@ -883,12 +930,17 @@ export default function CustomerDashboard() {
         const distanceKm =
           await calculateDistance();
 
+        const finalDistance =
+          tripType === "round_trip"
+            ? distanceKm * 2
+            : distanceKm;
+
         // FARE CALCULATION
         const fareRes =
         await axios.post(
            `${process.env.NEXT_PUBLIC_API_URL}/rides/estimate-fare`,
            {
-             distanceKm
+             distanceKm: finalDistance
             }
           );
 
@@ -906,7 +958,7 @@ export default function CustomerDashboard() {
             destination:
               destinationData,
 
-            distanceKm,
+            distanceKm: finalDistance,
 
             estimatedFare,
 
@@ -918,6 +970,12 @@ export default function CustomerDashboard() {
             pickupDate,
 
             pickupTime,
+
+            tripType,
+
+            returnDate,
+
+            returnTime,
 
             otp:
               Math.floor(
@@ -1029,6 +1087,28 @@ export default function CustomerDashboard() {
               {activeRide.destination.address}
             </p>
 
+            {
+              activeRide.tripType === "round_trip" && (
+
+                <div className="mt-3">
+
+                  <p>
+                    Return Date:
+                    {" "}
+                    {activeRide.returnDate}
+                  </p>
+
+                  <p>
+                    Return Time:
+                    {" "}
+                    {activeRide.returnTime}
+                  </p>
+
+                </div>
+
+              )
+            }
+
             <p>
               Distance:
               {" "}
@@ -1038,8 +1118,71 @@ export default function CustomerDashboard() {
             <p>
               Fare:
               {" "}
-              ₹{activeRide.estimatedFare}
+              {
+                activeRide.vehicleType === "any" &&
+                !activeRide.driverId
+                  ? `Starting from ₹${activeRide.baseEstimatedFare}`
+                  : `₹${activeRide.estimatedFare}`
+              }
             </p>
+
+            {
+              activeRide?.status === "waiting_return" && (
+
+                <div className="
+                  mt-4
+                  bg-yellow-100
+                  border
+                  border-yellow-300
+                  rounded-xl
+                  p-4
+                ">
+
+                  <p className="font-semibold">
+                    🚕 Driver is waiting for you
+                  </p>
+
+                  <p className="mt-2">
+                    Waiting Time:
+                    {" "}
+                    {waitingMinutes} minutes
+                  </p>
+
+                  <p className="
+                    mt-1
+                    text-sm
+                    text-gray-600
+                  ">
+                    Additional charges may apply.
+                  </p>
+
+                </div>
+
+              )
+            }
+
+            {
+              activeRide?.tripType === "round_trip" &&
+              activeRide?.waitTimeMinutes > 0 && (
+
+                <div className="mt-4">
+
+                  <p>
+                    ⏳ Waiting:
+                    {" "}
+                    {activeRide.waitTimeMinutes} min
+                  </p>
+
+                  <p>
+                    💰 Extra Charge:
+                    {" "}
+                    ₹{activeRide.waitCharge}
+                  </p>
+
+                </div>
+
+              )
+            }
 
             <p>
               Status:
@@ -1380,6 +1523,18 @@ export default function CustomerDashboard() {
                 {activeRide.vehicleType}
               </span>
             </p>
+
+            {
+              activeRide.vehicleTypeAssigned && (
+
+                <p>
+                  Vehicle:
+                  {" "}
+                  {activeRide.vehicleTypeAssigned}
+                </p>
+
+              )
+            }
 
           </div>
 
@@ -1741,27 +1896,18 @@ export default function CustomerDashboard() {
                   }
                 `}
               >
-                Any
+                🚕 Any Vehicle
               </button>
-
               <button
-                onClick={() =>
-                  setVehicleType("mini")
-                }
-                className={`
-                  p-3
-                  rounded-xl
-                  border
-                  ${
-                    vehicleType === "mini"
-                      ? "bg-black text-white"
-                      : "bg-white"
-                  }
-                `}
-              >
-                Mini
-              </button>
-
+                 onClick={() => setVehicleType("mini")}
+                className={
+                 vehicleType === "mini"
+                 ? "bg-black text-white"
+                 : "border"
+                   }
+                        > 
+                   🚖 Mini
+                    </button>
               <button
                 onClick={() =>
                   setVehicleType("sedan")
@@ -1777,7 +1923,7 @@ export default function CustomerDashboard() {
                   }
                 `}
               >
-                Sedan
+                🚘 Sedan
               </button>
 
               <button
@@ -1795,10 +1941,93 @@ export default function CustomerDashboard() {
                   }
                 `}
               >
-                SUV
+                🚙 SUV
+              </button>
+
+              <button
+                onClick={() =>
+                  setVehicleType("suv_xl")
+                }
+                className={`
+                  p-3
+                  rounded-xl
+                  border
+                  ${
+                    vehicleType === "suv_xl"
+                      ? "bg-black text-white"
+                      : "bg-white"
+                  }
+                `}
+              >
+                🚐 SUV XL (7 seats)
               </button>
 
             </div>
+
+          </div>
+
+          <div className="mt-5">
+
+            <h3 className="
+              font-semibold
+              mb-3
+            ">
+              Trip Type
+            </h3>
+
+            <div className="grid grid-cols-2 gap-3">
+
+              <button
+                onClick={() => setTripType("one_way")}
+                className={
+                  tripType === "one_way"
+                    ? "bg-black text-white p-3 rounded-xl"
+                    : "border p-3 rounded-xl"
+                }
+              >
+                ➡️ One Way
+              </button>
+
+              <button
+                onClick={() => setTripType("round_trip")}
+                className={
+                  tripType === "round_trip"
+                    ? "bg-black text-white p-3 rounded-xl"
+                    : "border p-3 rounded-xl"
+                }
+              >
+                🔄 Round Trip
+              </button>
+
+            </div>
+
+            {
+              tripType === "round_trip" && (
+
+                <div className="space-y-4 mt-4">
+
+                  <input
+                    type="date"
+                    value={returnDate}
+                    onChange={(e) =>
+                      setReturnDate(e.target.value)
+                    }
+                    className="w-full p-4 border rounded-xl"
+                  />
+
+                  <input
+                    type="time"
+                    value={returnTime}
+                    onChange={(e) =>
+                      setReturnTime(e.target.value)
+                    }
+                    className="w-full p-4 border rounded-xl"
+                  />
+
+                </div>
+
+              )
+            }
 
           </div>
 

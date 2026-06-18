@@ -1,17 +1,19 @@
 from fastapi import APIRouter
 from app.firebase import db
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from firebase_admin import firestore
-from app.services.fare_engine import (
-    calculate_fare
-)
 from app.services.ola_maps import (
     calculate_distance
 )
 from app.services.ola_maps import (
     calculate_distance,
     get_route_data
+)
+from app.services.fare_engine import (
+    calculate_fare,
+    calculate_wait_charge,
+    calculate_final_fare
 )
 
 router = APIRouter(prefix="/rides", tags=["Rides"])
@@ -28,6 +30,29 @@ def create_ride(data: dict):
         else "searching"
     )
 
+    vehicle_type = data.get(
+        "vehicleType",
+        "any"
+    )
+
+    if vehicle_type == "any":
+
+        base_estimated_fare = calculate_fare(
+            data["distanceKm"],
+            "mini"
+        )
+
+        estimated_fare = None
+
+    else:
+
+        estimated_fare = calculate_fare(
+            data["distanceKm"],
+            vehicle_type
+        )
+
+        base_estimated_fare = estimated_fare
+
     ride_data = {
 
         "rideId": ride_id,
@@ -40,14 +65,25 @@ def create_ride(data: dict):
 
         "distanceKm": data["distanceKm"],
 
-        "estimatedFare": data["estimatedFare"],
+        "estimatedFare": estimated_fare,
 
-        "vehicleType":
-            data.get(
-                "vehicleType",
-                "any"
-            ),
+        "baseEstimatedFare":
+            base_estimated_fare,
 
+        "vehicleType": vehicle_type,
+
+        "vehicleTypeAssigned": None,
+        
+         "waitStartTime": None,
+
+        "waitEndTime": None,
+
+        "waitTimeMinutes": 0,
+
+        "waitCharge": 0,
+
+        "returnStarted": False,
+                
         "rideType":
             data.get(
                 "rideType",
@@ -59,6 +95,24 @@ def create_ride(data: dict):
 
         "pickupTime":
             data.get("pickupTime", ""),
+
+        "tripType":
+            data.get(
+                "tripType",
+                "one_way"
+            ),
+
+        "returnDate":
+            data.get(
+                "returnDate",
+                ""
+            ),
+
+        "returnTime":
+            data.get(
+                "returnTime",
+                ""
+            ),
 
         "driverId": None,
 
@@ -136,9 +190,15 @@ def estimate_fare(data: dict):
 
     distance_km = data["distanceKm"]
 
+    vehicle_type = data.get(
+    "vehicleType",
+    "mini"
+        )
+
     fare = calculate_fare(
-        distance_km
-    )
+    distance_km,
+    vehicle_type
+        )
 
     return {
         "distanceKm":
@@ -171,10 +231,34 @@ def accept_ride(data: dict):
 
     ride_ref = db.collection("rides").document(data["rideId"])
 
-    ride_ref.update({
+    driver = db.collection("users") \
+        .document(data["driverId"]) \
+        .get() \
+        .to_dict()
+
+    driver_vehicle = driver.get(
+        "vehicleType",
+        "mini"
+    )
+
+    ride = ride_ref.get().to_dict()
+
+    update_data = {
         "driverId": data["driverId"],
+        "vehicleTypeAssigned":
+            driver_vehicle,
+
         "status": "accepted"
-    })
+    }
+
+    if ride["vehicleType"] == "any":
+
+        update_data["estimatedFare"] = calculate_fare(
+            ride["distanceKm"],
+            driver_vehicle
+        )
+
+    ride_ref.update(update_data)
 
     return {
         "success": True
@@ -193,6 +277,76 @@ def update_status(data: dict):
 
     return {
         "success": True
+    }
+
+@router.post("/start-waiting")
+def start_waiting(data: dict):
+
+    ride_ref = db.collection("rides").document(
+        data["rideId"]
+    )
+
+    ride_ref.update({
+        "status": "waiting_return",
+
+        "waitStartTime":
+            firestore.SERVER_TIMESTAMP
+    })
+
+    return {
+        "success": True
+    }
+
+@router.post("/resume-trip")
+def resume_trip(data: dict):
+
+    ride_ref = db.collection("rides").document(
+        data["rideId"]
+    )
+
+    ride = ride_ref.get().to_dict()
+
+    wait_start = ride.get(
+        "waitStartTime"
+    )
+
+    wait_end = datetime.now(
+        timezone.utc
+    )
+
+    minutes = int(
+        (wait_end - wait_start).total_seconds()
+        / 60
+    )
+
+    fare = calculate_final_fare(
+        ride["distanceKm"],
+        ride["vehicleType"],
+        minutes
+    )
+
+    ride_ref.update({
+
+        "status":
+            "in_progress_return",
+
+        "waitEndTime":
+            wait_end,
+
+        "waitTimeMinutes":
+            minutes,
+
+        "waitCharge":
+            fare["waitCharge"],
+
+        "finalFare":
+            fare["finalFare"]
+    })
+
+    return {
+        "success": True,
+        "minutes": minutes,
+        "charge": fare["waitCharge"]
     }
 
 @router.post("/reserve")
@@ -230,6 +384,28 @@ def cancel_reservation(data: dict):
 
     return {"success": True}
 
+@router.post("/update-wait-time")
+def update_wait_time(data: dict):
+
+    ride_ref = db.collection("rides").document(
+        data["rideId"]
+    )
+
+    minutes = data["minutes"]
+
+    charge = calculate_wait_charge(
+        minutes
+    )
+
+    ride_ref.update({
+        "waitTimeMinutes": minutes,
+        "waitCharge": charge
+    })
+
+    return {
+        "success": True,
+        "waitCharge": charge
+    }
 @router.post("/cancel")
 def cancel_ride(data: dict):
 

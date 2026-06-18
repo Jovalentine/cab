@@ -3,18 +3,20 @@
 import { useState } from "react";
 
 import {
-    createUserWithEmailAndPassword
+  createUserWithEmailAndPassword
 } from "firebase/auth";
 
 import {
-    doc,
-    setDoc
+  doc,
+  setDoc
 } from "firebase/firestore";
 
 import {
-    auth,
-    db
+  auth,
+  db
 } from "@/lib/firebase";
+
+
 
 export default function CreateDriverPage() {
 
@@ -98,7 +100,7 @@ export default function CreateDriverPage() {
             rcNumber,
 
             createdAt:
-              new Date()
+              serverTimestamp()
           }
         );
 
@@ -208,15 +210,18 @@ ${tempPassword}`
           >
 
             <option value="mini">
-              Mini
+              🚗 Mini
             </option>
 
             <option value="sedan">
-              Sedan
+              🚘 Sedan
             </option>
 
             <option value="suv">
-              SUV
+              🚙 SUV
+            </option>
+            <option value="suv_xl">
+              🚐 SUV XL (7 Seats)
             </option>
 
           </select>
