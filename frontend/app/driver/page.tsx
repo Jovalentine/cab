@@ -932,11 +932,10 @@ export default function DriverDashboard() {
 
     try {
 
-      await updateDoc(
-        doc(db, "rides", activeRide.id),
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/rides/start-waiting`,
         {
-          status: "waiting_return",
-          waitingStartedAt: new Date()
+          rideId: activeRide.id
         }
       );
 
@@ -952,17 +951,10 @@ export default function DriverDashboard() {
 
     try {
 
-      const waitingMinutes = Math.ceil(
-        (Date.now() -
-          activeRide.waitingStartedAt.toDate().getTime()) /
-        60000
-      );
-
-      await updateDoc(
-        doc(db, "rides", activeRide.id),
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/rides/resume-trip`,
         {
-          status: "in_progress_return",
-          waitingMinutes
+          rideId: activeRide.id
         }
       );
 

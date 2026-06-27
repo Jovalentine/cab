@@ -223,6 +223,10 @@ export default function CustomerDashboard() {
   const [waitingMinutes, setWaitingMinutes] =
     useState(0);
 
+  const [fareBreakdown,
+    setFareBreakdown] =
+    useState<any>(null);
+
   // LIVE WAITING TIMER
   useEffect(() => {
 
@@ -468,35 +472,39 @@ export default function CustomerDashboard() {
     ) return;
 
     if (
-  activeRide.status ===
-  "accepted" ||
-  activeRide.status ===
-  "arrived"
-) {
+      activeRide.status === "accepted" ||
+      activeRide.status === "arrived"
+    ) {
 
-  // DRIVER GOING TO CUSTOMER
+      getRoutePolyline(
+        driverData.currentLocation.lat,
+        driverData.currentLocation.lng,
+        activeRide.pickup.lat,
+        activeRide.pickup.lng
+      );
 
-  getRoutePolyline(
-    driverData.currentLocation.lat,
-    driverData.currentLocation.lng,
+    } else if (
+      activeRide.status === "in_progress"
+    ) {
 
-    activeRide.pickup.lat,
-    activeRide.pickup.lng
-  );
+      getRoutePolyline(
+        driverData.currentLocation.lat,
+        driverData.currentLocation.lng,
+        activeRide.destination.lat,
+        activeRide.destination.lng
+      );
 
-} else {
+    } else if (
+      activeRide.status === "in_progress_return"
+    ) {
 
-  
-    // RIDE STARTED
-
-    getRoutePolyline(
-      driverData.currentLocation.lat,
-      driverData.currentLocation.lng,
-
-      activeRide.destination.lat,
-      activeRide.destination.lng
-    );
-  }
+      getRoutePolyline(
+        driverData.currentLocation.lat,
+        driverData.currentLocation.lng,
+        activeRide.pickup.lat,
+        activeRide.pickup.lng
+      );
+    }
 
     }, [
       driverData?.currentLocation,
@@ -504,6 +512,60 @@ export default function CustomerDashboard() {
       activeRide?.pickup,
       activeRide?.status
     ]);
+
+  // FETCH FARE ESTIMATE
+  useEffect(() => {
+
+    const pickup =
+      pickupLocation ?? currentLocation;
+
+    if (
+      !pickup ||
+      !selectedPlace ||
+      vehicleType === "any"
+    ) {
+      setFareBreakdown(null);
+      return;
+    }
+
+    const fetchFare = async () => {
+
+      try {
+
+        const distanceResponse =
+          await axios.post(
+            `${process.env.NEXT_PUBLIC_API_URL}/rides/calculate-distance`,
+            {
+              originLat: pickup.lat,
+              originLng: pickup.lng,
+              destLat: selectedPlace.geometry.location.lat,
+              destLng: selectedPlace.geometry.location.lng
+            }
+          );
+
+        const distanceKm =
+          distanceResponse.data.distanceKm;
+
+        const fareResponse =
+          await axios.post(
+            `${process.env.NEXT_PUBLIC_API_URL}/rides/estimate-fare`,
+            {
+              distanceKm,
+              vehicleType
+            }
+          );
+
+        setFareBreakdown(fareResponse.data);
+
+      } catch (error) {
+
+        console.log(error);
+      }
+    };
+
+    fetchFare();
+
+  }, [vehicleType, destination, pickupLocation, currentLocation, selectedPlace]);
 
   // SEARCH PICKUP
   const searchPickup =
@@ -940,7 +1002,8 @@ export default function CustomerDashboard() {
         await axios.post(
            `${process.env.NEXT_PUBLIC_API_URL}/rides/estimate-fare`,
            {
-             distanceKm: finalDistance
+             distanceKm: finalDistance,
+             vehicleType: vehicleType
             }
           );
 
@@ -960,7 +1023,15 @@ export default function CustomerDashboard() {
 
             distanceKm: finalDistance,
 
-            estimatedFare,
+            baseFare: fareRes.data.baseFare,
+
+            distanceFare: fareRes.data.distanceFare,
+
+            surgeCharge: fareRes.data.surgeCharge,
+
+            timeMultiplier: fareRes.data.timeMultiplier,
+
+            estimatedFare: fareRes.data.estimatedFare,
 
             vehicleType:
               vehicleType,
@@ -1248,8 +1319,10 @@ export default function CustomerDashboard() {
             }
 
             {
-              activeRide.status ===
-              "in_progress" && (
+              [
+                "in_progress",
+                "in_progress_return"
+              ].includes(activeRide.status) && (
 
                 <div className="
                   mt-4
@@ -1492,13 +1565,21 @@ export default function CustomerDashboard() {
                     {/* DESTINATION */}
                     <Marker
                       position={[
-                        activeRide.destination.lat,
-                        activeRide.destination.lng
+                        activeRide.status === "in_progress_return"
+                          ? activeRide.pickup.lat
+                          : activeRide.destination.lat,
+                        activeRide.status === "in_progress_return"
+                          ? activeRide.pickup.lng
+                          : activeRide.destination.lng
                       ]}
                       icon={icons.destinationIcon}
                     >
                       <Popup>
-                        🏁 Destination
+                        {
+                          activeRide.status === "in_progress_return"
+                            ? "Return Destination"
+                            : "Destination"
+                        }
                       </Popup>
                     </Marker>
 
@@ -1513,6 +1594,17 @@ export default function CustomerDashboard() {
                     }
                   </MapContainer>
                 </div>
+              )
+            }
+
+            {
+              activeRide?.finalFare && (
+
+                <p>
+                  Final Fare:
+                  ₹{activeRide.finalFare}
+                </p>
+
               )
             }
 
@@ -1743,26 +1835,66 @@ export default function CustomerDashboard() {
             )
           }
 
-          <div className="
-            mt-5
-            bg-gray-100
-            p-4
-            rounded-xl
-          ">
+          {
+            fareBreakdown && (
 
-            <p>
-              Estimated Distance:
-              25 km
-            </p>
+              <div className="
+                mt-4
+                bg-gray-100
+                p-4
+                rounded-xl
+              ">
 
-            <p className="mt-2">
+                <p>
+                  Vehicle:
+                  {vehicleType}
+                </p>
 
-              Estimated Fare:
-              ₹530
+                <p>
+                  Base Fare:
+                  ₹{fareBreakdown.baseFare}
+                </p>
 
-            </p>
+                <p>
+                  Distance Fare:
+                  ₹{fareBreakdown.distanceFare}
+                </p>
 
-          </div>
+                <p>
+                  Surge Charge:
+                  ₹{fareBreakdown.surgeCharge}
+                </p>
+
+                <p>
+                  Time Multiplier: ×{fareBreakdown.timeMultiplier}
+                </p>
+
+                <p>
+                  {
+                    fareBreakdown.timeMultiplier === 1.0
+                      ? "🌞 Morning Pricing"
+                      : fareBreakdown.timeMultiplier === 1.1
+                      ? "☀️ Afternoon Pricing"
+                      : fareBreakdown.timeMultiplier === 1.3
+                      ? "🌆 Evening Peak"
+                      : "🌙 Night Pricing"
+                  }
+                </p>
+
+                <hr className="my-2" />
+
+                <p className="
+                  font-bold
+                  text-lg
+                ">
+                  Estimated Fare:
+                  ₹{fareBreakdown.estimatedFare}
+                </p>
+
+              </div>
+
+            )
+          }
 
           <div className="mt-5">
 

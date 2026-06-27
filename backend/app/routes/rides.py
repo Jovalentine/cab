@@ -37,21 +37,25 @@ def create_ride(data: dict):
 
     if vehicle_type == "any":
 
-        base_estimated_fare = calculate_fare(
+        mini_fare = calculate_fare(
             data["distanceKm"],
             "mini"
         )
+
+        base_estimated_fare = mini_fare["estimatedFare"]
 
         estimated_fare = None
 
     else:
 
-        estimated_fare = calculate_fare(
+        fare = calculate_fare(
             data["distanceKm"],
             vehicle_type
         )
 
-        base_estimated_fare = estimated_fare
+        estimated_fare = fare["estimatedFare"]
+
+        base_estimated_fare = fare["estimatedFare"]
 
     ride_data = {
 
@@ -66,6 +70,14 @@ def create_ride(data: dict):
         "distanceKm": data["distanceKm"],
 
         "estimatedFare": estimated_fare,
+
+        "baseFare": fare["baseFare"] if vehicle_type != "any" else mini_fare["baseFare"],
+
+        "distanceFare": fare["distanceFare"] if vehicle_type != "any" else mini_fare["distanceFare"],
+
+        "surgeCharge": fare["surgeCharge"] if vehicle_type != "any" else mini_fare["surgeCharge"],
+
+        "timeMultiplier": fare["timeMultiplier"] if vehicle_type != "any" else mini_fare["timeMultiplier"],
 
         "baseEstimatedFare":
             base_estimated_fare,
@@ -200,13 +212,7 @@ def estimate_fare(data: dict):
     vehicle_type
         )
 
-    return {
-        "distanceKm":
-            distance_km,
-
-        "estimatedFare":
-            fare
-    }
+    return fare
 
 @router.post("/calculate-distance")
 def calculate_distance_api(
@@ -253,10 +259,20 @@ def accept_ride(data: dict):
 
     if ride["vehicleType"] == "any":
 
-        update_data["estimatedFare"] = calculate_fare(
+        fare = calculate_fare(
             ride["distanceKm"],
             driver_vehicle
         )
+
+        update_data["estimatedFare"] = fare["estimatedFare"]
+
+        update_data["baseFare"] = fare["baseFare"]
+
+        update_data["distanceFare"] = fare["distanceFare"]
+
+        update_data["surgeCharge"] = fare["surgeCharge"]
+
+        update_data["timeMultiplier"] = fare["timeMultiplier"]
 
     ride_ref.update(update_data)
 
